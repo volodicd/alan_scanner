@@ -1,0 +1,10 @@
+'hardware':
+  - '(?i)\[Hardware\]'
+'software':
+  - '(?i)\[Software\]'
+'high priority':
+  - '(?i)priority:?\s*high'
+'medium priority':
+  - '(?i)priority:?\s*medium'
+'low priority':
+  - '(?i)priority:?\s*low'

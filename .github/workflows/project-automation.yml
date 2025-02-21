@@ -1,0 +1,35 @@
+name: Project Board Automation
+
+on:
+  issues:
+    types: [opened, labeled, unlabeled, assigned, unassigned]
+  pull_request:
+    types: [opened, closed]
+
+jobs:
+  project_automation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Move to Backlog
+        if: github.event_name == 'issues' && github.event.action == 'opened'
+        uses: alex-page/github-project-automation-plus@v0.8.3
+        with:
+          project: Turtlebot 2 Project
+          column: Backlog
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Move to Ready
+        if: github.event_name == 'issues' && github.event.action == 'assigned'
+        uses: alex-page/github-project-automation-plus@v0.8.3
+        with:
+          project: Turtlebot 2 Project
+          column: Ready
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Move to In Progress
+        if: github.event_name == 'issues' && contains(github.event.label.name, 'in-progress')
+        uses: alex-page/github-project-automation-plus@v0.8.3
+        with:
+          project: Turtlebot 2 Project
+          column: In progress
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
