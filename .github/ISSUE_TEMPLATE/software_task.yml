@@ -1,0 +1,44 @@
+name: 💻 Software Task
+description: Create a new software development task
+title: "[Software]: "
+labels: ["software"]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Software Component
+      options:
+        - SLAM
+        - Navigation
+        - Vision Processing
+        - Control System
+        - ROS Setup
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical-requirements
+    attributes:
+      label: Technical Requirements
+      description: List the technical requirements
+      placeholder: |
+        - Requirement 1
+        - Requirement 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: What defines this task as complete?
+      placeholder: |
+        - [ ] Criteria 1
+        - [ ] Criteria 2
+
+  - type: input
+    id: time-estimate
+    attributes:
+      label: Time Estimate (hours)
+      description: Estimated time to complete
+      placeholder: "4"

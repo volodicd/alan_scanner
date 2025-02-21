@@ -1,0 +1,46 @@
+name: 🤖 Hardware Task
+description: Create a new hardware-related task
+title: "[Hardware]: "
+labels: ["hardware"]
+assignees: []
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Hardware Component
+      options:
+        - Turtlebot Base
+        - Stereo Cameras
+        - Power System
+        - Sensors
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: task-description
+    attributes:
+      label: Task Description
+      description: What needs to be done?
+      placeholder: Describe the hardware task in detail
+    validations:
+      required: true
+
+  - type: input
+    id: time-estimate
+    attributes:
+      label: Time Estimate (hours)
+      description: Estimated time to complete
+      placeholder: "4"
+
+  - type: dropdown
+    id: sprint
+    attributes:
+      label: Sprint
+      options:
+        - Sprint 1
+        - Sprint 2
+        - Sprint 3
+        - Sprint 4
+        - Sprint 5
+        - Sprint 6
