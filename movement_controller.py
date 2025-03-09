@@ -207,8 +207,7 @@ class TurtlebotMovementController(Node):
                 # Check if we reached the target
                 if self.target_distance > 0 and self.distance_traveled >= self.target_distance:
                     self.get_logger().info(f"TARGET REACHED! {self.distance_traveled:.2f} m")
-                    self.stop_robot()
-                    self.finish_movement()
+                    self.complete_movement()
 
         self.prev_x = self.current_x
         self.prev_y = self.current_y
@@ -234,19 +233,22 @@ class TurtlebotMovementController(Node):
         """Runs at update_rate Hz, handles turning state, obstacles, etc."""
         if self.state == 'TURNING':
             now = self.get_clock().now().seconds_nanoseconds()[0]
-            if now >= self.turn_end_time:
+            if now >= self.turn_end_time and self.turn_end_time > 0:
                 # done turning
                 self.stop_robot()
                 old_state = self.state
                 self.state = 'MOVING'
                 self.get_logger().info(f"Changed state: {old_state} -> MOVING")
-                self.move_forward()
+                self.move_forward_direct()
             return
 
-        # If we're moving and there's an obstacle => turn away
+        # If we're moving and there's an obstacle => switch to IDLE
         if self.state == 'MOVING' and self.obstacle_detected:
-            self.get_logger().info(f"Obstacle => turning away")
-            self.turn_random()
+            self.get_logger().info(f"Obstacle detected => stopping movement")
+            self.stop_robot()
+            old_state = self.state
+            self.state = 'IDLE'
+            self.get_logger().info(f"Changed state: {old_state} -> IDLE")
 
     # ----------------------------------------------------------------------
     # STATE CHANGES
@@ -261,45 +263,12 @@ class TurtlebotMovementController(Node):
         self.prev_y = self.current_y
         self.state = 'MOVING'
         self.get_logger().info(f"Changed state: {old} -> MOVING")
-        self.move_forward()
+        self.move_forward_direct()
         self.get_logger().info(f"Starting movement for {dist:.2f} m")
-
-    def finish_movement(self):
-        """Reached the target distance => go IDLE."""
-        old = self.state
-        self.state = 'IDLE'
-        self.get_logger().info(f"Changed state: {old} -> IDLE")
-
-    def turn_random(self):
-        """Pick a direction and turn ~90 degrees."""
-        if self.state != 'MOVING':
-            return
-
-        old = self.state
-        self.stop_robot()
-        self.state = 'TURNING'
-
-        import random
-        direction = random.choice([-1, 1])  # left or right
-        turn_angle = math.pi / 2
-        turn_duration = turn_angle / self.angular_speed
-
-        now = self.get_clock().now().seconds_nanoseconds()[0]
-        self.turn_end_time = now + turn_duration
-
-        self.current_twist = Twist()
-        self.current_twist.angular.z = self.angular_speed * direction
-        self.get_logger().info(f"Changed state: {old} -> TURNING, rotating {'LEFT' if direction < 0 else 'RIGHT'}")
 
     # ----------------------------------------------------------------------
     # MOTION COMMANDS
     # ----------------------------------------------------------------------
-    def move_forward(self):
-        """Publish forward speed if in MOVING."""
-        if self.state == 'MOVING':
-            self.current_twist = Twist()
-            self.current_twist.linear.x = self.linear_speed
-
     def stop_robot(self):
         """Set twist to zero (cmd_timer keeps publishing)."""
         old_lin = self.current_twist.linear.x
@@ -334,7 +303,7 @@ class TurtlebotMovementController(Node):
         self.debug_pub.publish(dbg)
 
     # ----------------------------------------------------------------------
-    # DIRECT CONTROL FUNCTIONS (NEW)
+    # DIRECT CONTROL FUNCTIONS
     # ----------------------------------------------------------------------
     def move_forward_direct(self, speed=None, distance=None):
         """
@@ -461,19 +430,36 @@ class TurtlebotMovementController(Node):
         # Set up a timer to stop after duration
         timer = self.create_timer(
             duration,
-            lambda: self.end_timed_movement(timer)
+            lambda: self.complete_movement(timer)
         )
 
         self.get_logger().info(f"Changed state: {old_state} -> MOVING for {duration}s at speed={linear_speed:.2f}")
         return True
 
-    def end_timed_movement(self, timer):
-        """Helper to stop movement after timed movement completes."""
-        timer.cancel()
+    def complete_movement(self, timer=None):
+        """
+        Global function to stop robot movement and reset state.
+        Can be called directly or as a timer callback.
+
+        Args:
+            timer: Optional timer to cancel. If provided, will cancel the timer.
+        """
+        # If called from a timer, cancel it
+        if timer is not None:
+            timer.cancel()
+
+        # Stop the robot
         self.stop_robot()
+
+        # Change and log state
         old_state = self.state
         self.state = 'IDLE'
-        self.get_logger().info(f"Timed movement complete. Changed state: {old_state} -> IDLE")
+        self.get_logger().info(f"Movement complete. Changed state: {old_state} -> IDLE")
+
+        # Reset movement tracking if needed
+        if self.target_distance > 0:
+            self.get_logger().info(f"Distance traveled: {self.distance_traveled:.2f}/{self.target_distance:.2f}m")
+            self.target_distance = 0.0
 
     def turn_for_time(self, angular_speed, duration):
         """
@@ -489,7 +475,7 @@ class TurtlebotMovementController(Node):
         # Set up a timer to stop after duration
         timer = self.create_timer(
             duration,
-            lambda: self.end_timed_movement(timer)
+            lambda: self.complete_movement(timer)
         )
 
         direction = "left" if angular_speed > 0 else "right"
