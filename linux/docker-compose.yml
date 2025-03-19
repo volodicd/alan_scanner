@@ -14,34 +14,28 @@ services:
     # Mount the device
     devices:
       - /dev/kobuki:/dev/kobuki  # Update this path if your device is at a different location
-    # Use dynamic launch command that will find the right kobuki launch file
+    # Use the correct launch file as per official guide
     command: >
       bash -c "source /opt/ros/humble/setup.bash && source /opt/ros2_ws/install/setup.bash &&
-              export KOBUKI_LAUNCH=$$(find /opt/ros2_ws/install -name '*kobuki*.launch.py' | head -1) &&
-              if [ -n \"$$KOBUKI_LAUNCH\" ]; then
-                echo \"Launching Kobuki with $$KOBUKI_LAUNCH\" &&
-                export PKG_NAME=$$(echo $$KOBUKI_LAUNCH | sed -E 's|.*/install/([^/]+)/.*|\\1|') &&
-                export LAUNCH_FILE=$$(basename $$KOBUKI_LAUNCH) &&
-                ros2 launch $$PKG_NAME $$LAUNCH_FILE;
-              else
-                echo \"No Kobuki launch file found, looking for other options...\" &&
-                export ANY_LAUNCH=$$(find /opt/ros2_ws/install -path '*/launch/*' -name '*.py' | head -1) &&
-                if [ -n \"$$ANY_LAUNCH\" ]; then
-                  echo \"Trying launch file: $$ANY_LAUNCH\" &&
-                  export PKG_NAME=$$(echo $$ANY_LAUNCH | sed -E 's|.*/install/([^/]+)/.*|\\1|') &&
-                  export LAUNCH_FILE=$$(basename $$ANY_LAUNCH) &&
-                  ros2 launch $$PKG_NAME $$LAUNCH_FILE;
-                else
-                  echo \"No launch files found. Starting Kobuki manually...\" &&
-                  export KOBUKI_NODE=$$(ros2 pkg list | grep -i kobuki | head -1) &&
-                  if [ -n \"$$KOBUKI_NODE\" ]; then
-                    ros2 run $$KOBUKI_NODE kobuki_node;
-                  else
-                    echo \"No Kobuki packages found at all!\" && exit 1;
-                  fi;
-                fi;
-              fi"
+              ros2 launch kobuki_node kobuki_node-launch.py"
     restart: on-failure
+    environment:
+      - ROS_DOMAIN_ID=0
+
+  # Teleop service for keyboard control
+  teleop:
+    image: turtlebot2_api:latest
+    container_name: turtlebot2_teleop
+    networks:
+      - ros_net
+    depends_on:
+      - kobuki
+    tty: true
+    stdin_open: true
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash && source /opt/ros2_ws/install/setup.bash && 
+              sleep 5 && # Wait for kobuki to start
+              ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap cmd_vel:=commands/velocity"
     environment:
       - ROS_DOMAIN_ID=0
 
@@ -64,32 +58,6 @@ services:
               find /opt/ros2_ws/install -path '*/launch/*' -name '*.py' 2>/dev/null && 
               echo 'Entering debug shell...' && 
               bash"
-    environment:
-      - ROS_DOMAIN_ID=0
-
-  # Safety controller for obstacle avoidance
-  safety:
-    image: turtlebot2_api:latest
-    container_name: turtlebot2_safety
-    networks:
-      - ros_net
-    depends_on:
-      - kobuki
-    # Dynamic launch command for safety controller
-    command: >
-      bash -c "source /opt/ros/humble/setup.bash && source /opt/ros2_ws/install/setup.bash && 
-              sleep 5 && # Wait for kobuki to start
-              export SAFETY_LAUNCH=$$(find /opt/ros2_ws/install -name '*safety*.launch.py' | head -1) &&
-              if [ -n \"$$SAFETY_LAUNCH\" ]; then
-                echo \"Launching Safety Controller with $$SAFETY_LAUNCH\" &&
-                export PKG_NAME=$$(echo $$SAFETY_LAUNCH | sed -E 's|.*/install/([^/]+)/.*|\\1|') &&
-                export LAUNCH_FILE=$$(basename $$SAFETY_LAUNCH) &&
-                ros2 launch $$PKG_NAME $$LAUNCH_FILE;
-              else
-                echo \"No safety controller launch file found\" &&
-                sleep infinity;
-              fi"
-    restart: on-failure
     environment:
       - ROS_DOMAIN_ID=0
 
