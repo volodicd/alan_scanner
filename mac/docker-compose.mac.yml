@@ -1,0 +1,109 @@
+# macOS-specific Docker Compose file for TurtleBot2 API
+
+# This is a macOS-specific docker-compose configuration
+# Use this instead of docker-compose.yml on macOS
+#
+# For running with real TurtleBot hardware on Mac:
+# 1. Install USB forwarding software like VirtualHere
+# 2. Configure it to forward the TurtleBot USB device to Docker
+# 3. Update the device path below to match your forwarded device
+
+services:
+  # TurtleBot2 base node (kobuki)
+  kobuki:
+    build:
+      context: ..
+      dockerfile: ../linux/Dockerfile
+    image: turtlebot2_api:latest
+    container_name: turtlebot2_kobuki
+    networks:
+      - ros_net
+    # For macOS, you need USB forwarding tools
+    # Option 1: Use VirtualHere USB Server to forward USB devices to Docker
+    # Option 2: Use a serial proxy like ser2net on the host
+    #           and map the TCP port into the container
+    # Uncomment ONE of these options:
+    
+    # === OPTION 1: VirtualHere USB forwarding ===
+    # volumes:
+    #  - /dev/virtualhere/kobuki:/dev/kobuki
+    
+    # === OPTION 2: Serial proxy via ser2net ===
+    # First run on host: socat -d -d /dev/tty.usbserial-* tcp-listen:4321,reuseaddr
+    # Then use this network port instead of device mapping
+    ports:
+     - "4321:4321"
+    # Use ros2 run for kobuki_node
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash && 
+      source /opt/ros2_ws/install/setup.bash || echo 'Setup failed, but continuing' && 
+      echo 'Setting up serial proxy...' && 
+      (socat -d -d tcp:host.docker.internal:4321 pty,raw,echo=0,link=/dev/ttyUSB0 &) &&
+      sleep 2 &&
+      echo 'Starting kobuki_node...' && 
+      cd /opt/ros2_ws && 
+      echo 'Available launch files:' &&
+      find . -name '*launch*' | grep -i kobuki || echo 'No launch files found' &&
+      ls -la /dev/ttyUSB0 &&
+      ros2 pkg list | grep kobuki && 
+      ros2 launch kobuki_node kobuki_node-launch.py serial_port:=/dev/ttyUSB0 || echo 'Trying alternative launch command' &&
+      ros2 run kobuki_node kobuki_node_exe --ros-args -p port:=/dev/ttyUSB0"
+    restart: unless-stopped
+    environment:
+      - ROS_DOMAIN_ID=0
+
+  # Safety controller for obstacle avoidance
+  safety:
+    image: turtlebot2_api:latest
+    container_name: turtlebot2_safety
+    networks:
+      - ros_net
+    depends_on:
+      - kobuki
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash && 
+      source /opt/ros2_ws/install/setup.bash && 
+      echo 'Starting safety controller...' && 
+      cd /opt/ros2_ws && 
+      ros2 launch kobuki_ros safety_controller-launch.py"
+    restart: unless-stopped
+    environment:
+      - ROS_DOMAIN_ID=0
+
+  # Our API service
+  api:
+    image: turtlebot2_api:latest
+    container_name: turtlebot2_api
+    networks:
+      - ros_net
+    volumes:
+      - .:/app  # Mount the current directory for development
+    depends_on:
+      - kobuki
+      - safety
+    # By default, the container runs the example script
+    # Override with your own command if needed
+    command: python3 turtlebot2_example.py
+    environment:
+      - ROS_DOMAIN_ID=0
+
+  # Shell service for interactive development
+  shell:
+    image: turtlebot2_api:latest
+    container_name: turtlebot2_shell
+    networks:
+      - ros_net
+    volumes:
+      - .:/app  # Mount the current directory
+    depends_on:
+      - kobuki
+    stdin_open: true
+    tty: true
+    command: bash
+    environment:
+      - ROS_DOMAIN_ID=0
+
+# Define a dedicated network for ROS communication
+networks:
+  ros_net:
+    driver: bridge
