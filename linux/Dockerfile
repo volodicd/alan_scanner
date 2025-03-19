@@ -88,56 +88,54 @@ COPY . /app/
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create entrypoint script using heredoc syntax
-RUN cat > /entrypoint.sh << 'EOF'
-#!/bin/bash
-set -e
-
-# Source ROS2 setup files
-source /opt/ros/humble/setup.bash
-source /opt/ros2_ws/install/setup.bash || echo "Warning: Could not source workspace"
-
-# Print ros2 package status
-echo "Checking ROS2 packages:"
-ros2 pkg list | grep -i kobuki || echo "No kobuki packages found"
-
-# Check if running in WSL
-if grep -q WSL /proc/version; then
-    echo "Running in WSL environment"
-fi
-
-# Check if the robot device exists
-if [ -e /dev/kobuki ]; then
-    echo "TurtleBot2/Kobuki device found at /dev/kobuki"
-    ls -l /dev/kobuki
-else
-    echo "Warning: TurtleBot2/Kobuki device not found at /dev/kobuki"
-
-    # Look for alternate device paths
-    for device in /dev/ttyUSB* /dev/ttyACM*; do
-        if [ -e "$device" ]; then
-            echo "Found potential TurtleBot2 device at $device"
-            echo "Consider creating a symlink: sudo ln -s $device /dev/kobuki"
-        fi
-    done
-
-    # For testing without physical robot, create a mock device
-    if [[ "$1" == "python3" ]]; then
-        echo "Setting up virtual device for testing..."
-        socat -d PTY,link=/dev/kobuki,raw,echo=0 PTY,link=/dev/virtualbot,raw,echo=0 &
-        sleep 1
-    fi
-fi
-
-# Check network configuration
-echo "Network configuration:"
-ip addr show
-echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-Not set}"
-
-# Execute the command
-echo "Running command: $@"
-exec "$@"
-EOF
+# Create entrypoint script line by line
+RUN echo '#!/bin/bash' > /entrypoint.sh && \
+    echo 'set -e' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Source ROS2 setup files' >> /entrypoint.sh && \
+    echo 'source /opt/ros/humble/setup.bash' >> /entrypoint.sh && \
+    echo 'source /opt/ros2_ws/install/setup.bash || echo "Warning: Could not source workspace"' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Print ros2 package status' >> /entrypoint.sh && \
+    echo 'echo "Checking ROS2 packages:"' >> /entrypoint.sh && \
+    echo 'ros2 pkg list | grep -i kobuki || echo "No kobuki packages found"' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Check if running in WSL' >> /entrypoint.sh && \
+    echo 'if grep -q WSL /proc/version; then' >> /entrypoint.sh && \
+    echo '    echo "Running in WSL environment"' >> /entrypoint.sh && \
+    echo 'fi' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Check if the robot device exists' >> /entrypoint.sh && \
+    echo 'if [ -e /dev/kobuki ]; then' >> /entrypoint.sh && \
+    echo '    echo "TurtleBot2/Kobuki device found at /dev/kobuki"' >> /entrypoint.sh && \
+    echo '    ls -l /dev/kobuki' >> /entrypoint.sh && \
+    echo 'else' >> /entrypoint.sh && \
+    echo '    echo "Warning: TurtleBot2/Kobuki device not found at /dev/kobuki"' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '    # Look for alternate device paths' >> /entrypoint.sh && \
+    echo '    for device in /dev/ttyUSB* /dev/ttyACM*; do' >> /entrypoint.sh && \
+    echo '        if [ -e "$device" ]; then' >> /entrypoint.sh && \
+    echo '            echo "Found potential TurtleBot2 device at $device"' >> /entrypoint.sh && \
+    echo '            echo "Consider creating a symlink: sudo ln -s $device /dev/kobuki"' >> /entrypoint.sh && \
+    echo '        fi' >> /entrypoint.sh && \
+    echo '    done' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '    # For testing without physical robot, create a mock device' >> /entrypoint.sh && \
+    echo '    if [[ "$1" == "python3" ]]; then' >> /entrypoint.sh && \
+    echo '        echo "Setting up virtual device for testing..."' >> /entrypoint.sh && \
+    echo '        socat -d PTY,link=/dev/kobuki,raw,echo=0 PTY,link=/dev/virtualbot,raw,echo=0 &' >> /entrypoint.sh && \
+    echo '        sleep 1' >> /entrypoint.sh && \
+    echo '    fi' >> /entrypoint.sh && \
+    echo 'fi' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Check network configuration' >> /entrypoint.sh && \
+    echo 'echo "Network configuration:"' >> /entrypoint.sh && \
+    echo 'ip addr show' >> /entrypoint.sh && \
+    echo 'echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-Not set}"' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Execute the command' >> /entrypoint.sh && \
+    echo 'echo "Running command: $@"' >> /entrypoint.sh && \
+    echo 'exec "$@"' >> /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh
 
