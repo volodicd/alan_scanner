@@ -18,10 +18,18 @@ RUN apt-get update && apt-get install -y \
     psmisc \
     iproute2 \
     net-tools \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Add ROS2 repository explicitly to ensure all packages are available
+RUN echo "deb http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" > /etc/apt/sources.list.d/ros2-latest.list && \
+    curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | apt-key add -
+
+# Update package lists to include the new repository
+RUN apt-get update
+
 # Install kobuki velocity smoother and sophus as per instructions
-RUN apt-get update && apt-get install -y \
+RUN apt-get install -y \
     ros-humble-kobuki-velocity-smoother \
     ros-humble-sophus \
     ros-humble-teleop-twist-keyboard \
@@ -39,8 +47,8 @@ RUN git clone --recursive https://github.com/idorobotics/turtlebot2_ros2.git && 
     cp -r turtlebot2_ros2/.git* . && \
     rm -rf turtlebot2_ros2
 
-# Clone the ECL Tools repository separately (contains ecl_license and ecl_build)
-RUN git clone https://github.com/stonier/ecl_tools.git
+# Clone the angles package from source (required for build)
+RUN git clone https://github.com/ros/angles.git -b ros2
 
 # Initialize rosdep
 RUN apt-get update && \
@@ -49,72 +57,29 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install dependencies with rosdep as per instructions
+# Install dependencies with rosdep
 WORKDIR /opt/ros2_ws
 RUN bash -c "source /opt/ros/humble/setup.bash && \
     rosdep install -i --from-path src --rosdistro humble -y || true"
 
-# List the available packages and determine build order
-RUN bash -c "source /opt/ros/humble/setup.bash && \
-    echo 'Available packages before build:' && \
-    find /opt/ros2_ws/src -type f -name package.xml -exec dirname {} \; | sort"
-
-# Modify cmd_vel_mux to disable testing
+# Modify cmd_vel_mux to disable testing if needed
 RUN if [ -d "/opt/ros2_ws/src/cmd_vel_mux" ]; then \
     sed -i 's/find_package(ros_testing REQUIRED)/# find_package(ros_testing REQUIRED)/' /opt/ros2_ws/src/cmd_vel_mux/CMakeLists.txt && \
     sed -i '/add_executable(test_mux test\/test_mux.cpp)/,/target_link_libraries(test_mux/d' /opt/ros2_ws/src/cmd_vel_mux/CMakeLists.txt && \
     sed -i '/install(TARGETS test_mux/,/)/d' /opt/ros2_ws/src/cmd_vel_mux/CMakeLists.txt; \
     fi
 
-# Stage 1: Build ecl_tools first
+# Build the workspace with a single command as per the guide
 RUN bash -c "source /opt/ros/humble/setup.bash && \
-    echo 'Building ecl_tools packages first...' && \
-    cd /opt/ros2_ws && \
-    colcon build --symlink-install --packages-select ecl_license ecl_build ecl_tools --cmake-args -DBUILD_TESTING=OFF || true && \
-    source /opt/ros2_ws/install/setup.bash || true"
+    colcon build --symlink-install --executor sequential --cmake-args -DBUILD_TESTING=OFF"
 
-# Stage 2: Build ECL core packages
+# List the built packages and find launch files
 RUN bash -c "source /opt/ros/humble/setup.bash && \
-    source /opt/ros2_ws/install/setup.bash || true && \
-    echo 'Building ecl_core and ecl_lite packages...' && \
-    cd /opt/ros2_ws && \
-    colcon build --symlink-install --packages-up-to ecl_core ecl_lite --cmake-args -DBUILD_TESTING=OFF || true && \
-    source /opt/ros2_ws/install/setup.bash || true"
-
-# Stage 3: Build kobuki interfaces
-RUN bash -c "source /opt/ros/humble/setup.bash && \
-    source /opt/ros2_ws/install/setup.bash || true && \
-    echo 'Building kobuki_ros_interfaces...' && \
-    cd /opt/ros2_ws && \
-    colcon build --symlink-install --packages-select kobuki_ros_interfaces --cmake-args -DBUILD_TESTING=OFF || true && \
-    source /opt/ros2_ws/install/setup.bash || true"
-
-# Stage 4: Build the rest of the packages
-RUN bash -c "source /opt/ros/humble/setup.bash && \
-    source /opt/ros2_ws/install/setup.bash || true && \
-    echo 'Building remaining packages...' && \
-    cd /opt/ros2_ws && \
-    colcon build --symlink-install --packages-ignore ecl_license ecl_build ecl_tools ecl_core ecl_lite kobuki_ros_interfaces --cmake-args -DBUILD_TESTING=OFF || true"
-
-# Final attempt to build everything
-RUN bash -c "source /opt/ros/humble/setup.bash && \
-    source /opt/ros2_ws/install/setup.bash || true && \
-    echo 'Final build attempt for all packages...' && \
-    cd /opt/ros2_ws && \
-    colcon build --symlink-install --executor sequential --cmake-args -DBUILD_TESTING=OFF || true"
-
-# List the built packages
-RUN bash -c "source /opt/ros/humble/setup.bash && \
-    source /opt/ros2_ws/install/setup.bash || true && \
+    source /opt/ros2_ws/install/setup.bash && \
     echo 'Built packages:' && \
-    ros2 pkg list | grep -i kobuki || echo 'No kobuki packages were built'"
-
-# Find all launch files
-RUN bash -c "source /opt/ros/humble/setup.bash && \
-    source /opt/ros2_ws/install/setup.bash || true && \
+    ros2 pkg list | grep -i kobuki || echo 'No kobuki packages were built' && \
     echo 'Available launch files:' && \
-    find /opt/ros2_ws/install -name '*.launch.py' 2>/dev/null || echo 'No launch.py files found' && \
-    find /opt/ros2_ws/install -path '*/launch/*' -name '*.py' 2>/dev/null || echo 'No launch directory python files found'"
+    find /opt/ros2_ws/install -name '*.launch.py' 2>/dev/null || echo 'No launch.py files found'"
 
 # Copy our API to the container
 WORKDIR /app
@@ -124,53 +89,53 @@ COPY . /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create entrypoint script
-RUN echo '#!/bin/bash\n\
-set -e\n\
-\n\
-# Source ROS2 setup files\n\
-source /opt/ros/humble/setup.bash\n\
-source /opt/ros2_ws/install/setup.bash || echo "Warning: Could not source workspace"\n\
-\n\
-# Print ros2 package status\n\
-echo "Checking ROS2 packages:"\n\
-ros2 pkg list | grep -i kobuki || echo "No kobuki packages found"\n\
-\n\
-# Check if running in WSL\n\
-if grep -q WSL /proc/version; then\n\
-    echo "Running in WSL environment"\n\
-fi\n\
-\n\
-# Check if the robot device exists\n\
-if [ -e /dev/kobuki ]; then\n\
-    echo "TurtleBot2/Kobuki device found at /dev/kobuki"\n\
-    ls -l /dev/kobuki\n\
-else\n\
-    echo "Warning: TurtleBot2/Kobuki device not found at /dev/kobuki"\n\
-    \n\
-    # Look for alternate device paths\n\
-    for device in /dev/ttyUSB* /dev/ttyACM*; do\n\
-        if [ -e "$device" ]; then\n\
-            echo "Found potential TurtleBot2 device at $device"\n\
-            echo "Consider creating a symlink: sudo ln -s $device /dev/kobuki"\n\
-        fi\n\
-    done\n\
-    \n\
-    # For testing without physical robot, create a mock device\n\
-    if [[ "$1" == "python3" ]]; then\n\
-        echo "Setting up virtual device for testing..."\n\
-        socat -d PTY,link=/dev/kobuki,raw,echo=0 PTY,link=/dev/virtualbot,raw,echo=0 &\n\
-        sleep 1\n\
-    fi\n\
-fi\n\
-\n\
-# Check network configuration\n\
-echo "Network configuration:"\n\
-ip addr show\n\
-echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-Not set}"\n\
-\n\
-# Execute the command\n\
-echo "Running command: $@"\n\
-exec "$@"\n\
+RUN echo '#!/bin/bash
+set -e
+
+# Source ROS2 setup files
+source /opt/ros/humble/setup.bash
+source /opt/ros2_ws/install/setup.bash || echo "Warning: Could not source workspace"
+
+# Print ros2 package status
+echo "Checking ROS2 packages:"
+ros2 pkg list | grep -i kobuki || echo "No kobuki packages found"
+
+# Check if running in WSL
+if grep -q WSL /proc/version; then
+    echo "Running in WSL environment"
+fi
+
+# Check if the robot device exists
+if [ -e /dev/kobuki ]; then
+    echo "TurtleBot2/Kobuki device found at /dev/kobuki"
+    ls -l /dev/kobuki
+else
+    echo "Warning: TurtleBot2/Kobuki device not found at /dev/kobuki"
+
+    # Look for alternate device paths
+    for device in /dev/ttyUSB* /dev/ttyACM*; do
+        if [ -e "$device" ]; then
+            echo "Found potential TurtleBot2 device at $device"
+            echo "Consider creating a symlink: sudo ln -s $device /dev/kobuki"
+        fi
+    done
+
+    # For testing without physical robot, create a mock device
+    if [[ "$1" == "python3" ]]; then
+        echo "Setting up virtual device for testing..."
+        socat -d PTY,link=/dev/kobuki,raw,echo=0 PTY,link=/dev/virtualbot,raw,echo=0 &
+        sleep 1
+    fi
+fi
+
+# Check network configuration
+echo "Network configuration:"
+ip addr show
+echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-Not set}"
+
+# Execute the command
+echo "Running command: $@"
+exec "$@"
 ' > /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh

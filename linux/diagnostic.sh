@@ -22,6 +22,18 @@ else
     echo ""
 fi
 
+# Check APT repository configuration
+echo -e "\n${BLUE}Checking ROS2 repository configuration...${NC}"
+if grep -q "packages.ros.org/ros2" /etc/apt/sources.list.d/ros2-latest.list 2>/dev/null; then
+    echo -e "${GREEN}✓ ROS2 repository is properly configured${NC}"
+else
+    echo -e "${RED}✗ ROS2 repository is not properly configured${NC}"
+    echo "This may cause dependency issues. Run these commands to fix:"
+    echo "  echo \"deb http://packages.ros.org/ros2/ubuntu \$(lsb_release -cs) main\" > /etc/apt/sources.list.d/ros2-latest.list"
+    echo "  curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | apt-key add -"
+    echo "  apt-get update"
+fi
+
 # Source ROS2 setup files
 echo -e "\n${BLUE}Sourcing ROS2 setup files...${NC}"
 source /opt/ros/humble/setup.bash || { echo -e "${RED}✗ Failed to source ROS2 installation${NC}"; exit 1; }
@@ -44,6 +56,26 @@ else
     done
 fi
 
+# Check for required source directories
+echo -e "\n${BLUE}Checking for required source repositories...${NC}"
+SRC_DIR="/opt/ros2_ws/src"
+
+# Check for angles source
+if [ -d "$SRC_DIR/angles" ]; then
+    echo -e "${GREEN}✓ angles package found${NC}"
+else
+    echo -e "${RED}✗ angles package not found in workspace${NC}"
+    echo "You should clone this repository: git clone https://github.com/ros/angles.git -b ros2"
+fi
+
+# Check for ecl_tools source
+if [ -d "$SRC_DIR/ecl_tools" ]; then
+    echo -e "${GREEN}✓ ecl_tools package found${NC}"
+else
+    echo -e "${RED}✗ ecl_tools package not found in workspace${NC}"
+    echo "You should clone this repository: git clone https://github.com/stonier/ecl_tools.git"
+fi
+
 # Check for kobuki-related packages
 echo -e "\n${BLUE}Checking for kobuki packages:${NC}"
 KOBUKI_PKGS=$(ros2 pkg list 2>/dev/null | grep -i kobuki)
@@ -53,6 +85,15 @@ if [ -n "$KOBUKI_PKGS" ]; then
 else
     echo -e "${RED}✗ No kobuki packages found!${NC}"
     echo "This suggests the build process failed or packages weren't installed correctly."
+fi
+
+# Check for diagnostic_updater package
+echo -e "\n${BLUE}Checking for diagnostic_updater package:${NC}"
+if ros2 pkg list 2>/dev/null | grep -q "diagnostic_updater"; then
+    echo -e "${GREEN}✓ diagnostic_updater package found${NC}"
+else
+    echo -e "${RED}✗ diagnostic_updater package not found${NC}"
+    echo "This is required for kobuki_node. Make sure your ROS repository is configured correctly."
 fi
 
 # Find all launch files
