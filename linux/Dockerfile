@@ -88,8 +88,9 @@ COPY . /app/
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create entrypoint script
-RUN echo '#!/bin/bash
+# Create entrypoint script using heredoc syntax
+RUN cat > /entrypoint.sh << 'EOF'
+#!/bin/bash
 set -e
 
 # Source ROS2 setup files
@@ -136,7 +137,7 @@ echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-Not set}"
 # Execute the command
 echo "Running command: $@"
 exec "$@"
-' > /entrypoint.sh
+EOF
 
 RUN chmod +x /entrypoint.sh
 
