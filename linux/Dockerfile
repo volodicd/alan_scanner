@@ -28,13 +28,16 @@ RUN echo "deb http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $U
 # Update package lists to include the new repository
 RUN apt-get update
 
-# Install kobuki velocity smoother and sophus as per instructions
+# Install kobuki velocity smoother, sophus, and diagnostic packages
 RUN apt-get install -y \
     ros-humble-kobuki-velocity-smoother \
     ros-humble-sophus \
     ros-humble-teleop-twist-keyboard \
     ros-humble-joy-teleop \
     ros-humble-teleop-twist-joy \
+    ros-humble-diagnostic-updater \
+    ros-humble-diagnostic-msgs \
+    ros-humble-diagnostic-aggregator \
     && rm -rf /var/lib/apt/lists/*
 
 # Create workspace
@@ -86,7 +89,7 @@ RUN bash -c "source /opt/ros/humble/setup.bash && \
 # Stage 3: Build remaining packages
 RUN bash -c "source /opt/ros/humble/setup.bash && \
     source /opt/ros2_ws/install/setup.bash && \
-    colcon build --symlink-install --executor sequential --cmake-args -DBUILD_TESTING=OFF"
+    colcon build --symlink-install --executor sequential --cmake-args -DBUILD_TESTING=OFF -Wno-dev"
 
 # List the built packages and find launch files
 RUN bash -c "source /opt/ros/humble/setup.bash && \
