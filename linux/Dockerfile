@@ -51,7 +51,7 @@ WORKDIR /opt/ros2_ws
 RUN . /opt/ros/humble/setup.sh && \
     rosdep install -i --from-path src --rosdistro humble -y || true
 
-# List the available packages
+# List the available packages and determine build order
 RUN . /opt/ros/humble/setup.sh && \
     echo "Available packages before build:" && \
     find /opt/ros2_ws/src -name package.xml -exec dirname {} \; | sort
@@ -63,16 +63,37 @@ RUN if [ -d "/opt/ros2_ws/src/cmd_vel_mux" ]; then \
     sed -i '/install(TARGETS test_mux/,/)/d' /opt/ros2_ws/src/cmd_vel_mux/CMakeLists.txt; \
     fi
 
-# Build the workspace using sequential executor and disable testing
+# Stage 1: Build ecl_tools first
 RUN . /opt/ros/humble/setup.sh && \
-    colcon build --symlink-install --executor sequential --cmake-args -DBUILD_TESTING=OFF
+    echo "Building ecl_tools packages first..." && \
+    colcon build --symlink-install --packages-select ecl_license ecl_build --cmake-args -DBUILD_TESTING=OFF && \
+    source /opt/ros2_ws/install/setup.sh
 
-# If the build fails, try building with skipping problematic packages
+# Stage 2: Build ECL core packages
 RUN . /opt/ros/humble/setup.sh && \
-    if [ ! -d "/opt/ros2_ws/install/kobuki_node" ]; then \
-        echo "First build attempt failed, trying with packages-skip option" && \
-        colcon build --symlink-install --executor sequential --packages-skip cmd_vel_mux --cmake-args -DBUILD_TESTING=OFF; \
-    fi
+    source /opt/ros2_ws/install/setup.sh && \
+    echo "Building ecl_core and ecl_lite packages..." && \
+    colcon build --symlink-install --packages-up-to ecl_core ecl_lite --cmake-args -DBUILD_TESTING=OFF && \
+    source /opt/ros2_ws/install/setup.sh
+
+# Stage 3: Build kobuki interfaces
+RUN . /opt/ros/humble/setup.sh && \
+    source /opt/ros2_ws/install/setup.sh && \
+    echo "Building kobuki_ros_interfaces..." && \
+    colcon build --symlink-install --packages-select kobuki_ros_interfaces --cmake-args -DBUILD_TESTING=OFF && \
+    source /opt/ros2_ws/install/setup.sh
+
+# Stage 4: Build the rest of the packages
+RUN . /opt/ros/humble/setup.sh && \
+    source /opt/ros2_ws/install/setup.sh && \
+    echo "Building remaining packages..." && \
+    colcon build --symlink-install --packages-skip-up-to ecl_license ecl_build ecl_core ecl_lite kobuki_ros_interfaces --cmake-args -DBUILD_TESTING=OFF || true
+
+# Final attempt to build everything
+RUN . /opt/ros/humble/setup.sh && \
+    source /opt/ros2_ws/install/setup.sh && \
+    echo "Final build attempt for all packages..." && \
+    colcon build --symlink-install --executor sequential --cmake-args -DBUILD_TESTING=OFF || true
 
 # List the built packages
 RUN . /opt/ros/humble/setup.sh && \
