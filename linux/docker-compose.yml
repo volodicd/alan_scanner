@@ -1,4 +1,4 @@
-# Docker Compose file for TurtleBot2 API on WSL
+# Docker Compose file for TurtleBot2 API on WSL with correct device mapping
 
 services:
   # TurtleBot2 base node (kobuki)
@@ -11,9 +11,9 @@ services:
     # Use bridge network for WSL
     networks:
       - ros_net
-    # Mount the device
+    # Mount the device at the correct path
     devices:
-      - /dev/kobuki:/dev/kobuki  # Update this path if your device is at a different location
+      - /dev/ttyUSB0:/dev/ttyUSB0  # Use the actual USB device path
     # Use the correct launch file as per official guide
     command: >
       bash -c "source /opt/ros/humble/setup.bash && source /opt/ros2_ws/install/setup.bash &&
@@ -47,6 +47,8 @@ services:
       - ros_net
     volumes:
       - .:/app
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0  # Also add device to debug container
     tty: true
     stdin_open: true
     command: >
@@ -88,6 +90,8 @@ services:
       - ros_net
     volumes:
       - .:/app  # Mount the current directory
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0  # Also add device to shell container
     depends_on:
       - kobuki
     stdin_open: true
