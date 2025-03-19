@@ -50,6 +50,9 @@ RUN git clone --recursive https://github.com/idorobotics/turtlebot2_ros2.git && 
 # Clone the angles package from source (required for build)
 RUN git clone https://github.com/ros/angles.git -b ros2
 
+# Clone ecl_tools separately to ensure it's available
+RUN git clone https://github.com/stonier/ecl_tools.git
+
 # Initialize rosdep
 RUN apt-get update && \
     rosdep init || true && \
@@ -69,8 +72,20 @@ RUN if [ -d "/opt/ros2_ws/src/cmd_vel_mux" ]; then \
     sed -i '/install(TARGETS test_mux/,/)/d' /opt/ros2_ws/src/cmd_vel_mux/CMakeLists.txt; \
     fi
 
-# Build the workspace with a single command as per the guide
+# Stage 1: Build angles first
 RUN bash -c "source /opt/ros/humble/setup.bash && \
+    colcon build --symlink-install --packages-select angles --cmake-args -DBUILD_TESTING=OFF && \
+    source /opt/ros2_ws/install/setup.bash"
+
+# Stage 2: Build ecl_tools (contains ecl_build which is needed by ecl_command_line)
+RUN bash -c "source /opt/ros/humble/setup.bash && \
+    source /opt/ros2_ws/install/setup.bash && \
+    colcon build --symlink-install --packages-select ecl_license ecl_build --cmake-args -DBUILD_TESTING=OFF && \
+    source /opt/ros2_ws/install/setup.bash"
+
+# Stage 3: Build remaining packages
+RUN bash -c "source /opt/ros/humble/setup.bash && \
+    source /opt/ros2_ws/install/setup.bash && \
     colcon build --symlink-install --executor sequential --cmake-args -DBUILD_TESTING=OFF"
 
 # List the built packages and find launch files
@@ -88,55 +103,8 @@ COPY . /app/
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create entrypoint script line by line
-RUN echo '#!/bin/bash' > /entrypoint.sh && \
-    echo 'set -e' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '# Source ROS2 setup files' >> /entrypoint.sh && \
-    echo 'source /opt/ros/humble/setup.bash' >> /entrypoint.sh && \
-    echo 'source /opt/ros2_ws/install/setup.bash || echo "Warning: Could not source workspace"' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '# Print ros2 package status' >> /entrypoint.sh && \
-    echo 'echo "Checking ROS2 packages:"' >> /entrypoint.sh && \
-    echo 'ros2 pkg list | grep -i kobuki || echo "No kobuki packages found"' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '# Check if running in WSL' >> /entrypoint.sh && \
-    echo 'if grep -q WSL /proc/version; then' >> /entrypoint.sh && \
-    echo '    echo "Running in WSL environment"' >> /entrypoint.sh && \
-    echo 'fi' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '# Check if the robot device exists' >> /entrypoint.sh && \
-    echo 'if [ -e /dev/kobuki ]; then' >> /entrypoint.sh && \
-    echo '    echo "TurtleBot2/Kobuki device found at /dev/kobuki"' >> /entrypoint.sh && \
-    echo '    ls -l /dev/kobuki' >> /entrypoint.sh && \
-    echo 'else' >> /entrypoint.sh && \
-    echo '    echo "Warning: TurtleBot2/Kobuki device not found at /dev/kobuki"' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '    # Look for alternate device paths' >> /entrypoint.sh && \
-    echo '    for device in /dev/ttyUSB* /dev/ttyACM*; do' >> /entrypoint.sh && \
-    echo '        if [ -e "$device" ]; then' >> /entrypoint.sh && \
-    echo '            echo "Found potential TurtleBot2 device at $device"' >> /entrypoint.sh && \
-    echo '            echo "Consider creating a symlink: sudo ln -s $device /dev/kobuki"' >> /entrypoint.sh && \
-    echo '        fi' >> /entrypoint.sh && \
-    echo '    done' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '    # For testing without physical robot, create a mock device' >> /entrypoint.sh && \
-    echo '    if [[ "$1" == "python3" ]]; then' >> /entrypoint.sh && \
-    echo '        echo "Setting up virtual device for testing..."' >> /entrypoint.sh && \
-    echo '        socat -d PTY,link=/dev/kobuki,raw,echo=0 PTY,link=/dev/virtualbot,raw,echo=0 &' >> /entrypoint.sh && \
-    echo '        sleep 1' >> /entrypoint.sh && \
-    echo '    fi' >> /entrypoint.sh && \
-    echo 'fi' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '# Check network configuration' >> /entrypoint.sh && \
-    echo 'echo "Network configuration:"' >> /entrypoint.sh && \
-    echo 'ip addr show' >> /entrypoint.sh && \
-    echo 'echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-Not set}"' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '# Execute the command' >> /entrypoint.sh && \
-    echo 'echo "Running command: $@"' >> /entrypoint.sh && \
-    echo 'exec "$@"' >> /entrypoint.sh
-
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

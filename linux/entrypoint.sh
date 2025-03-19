@@ -5,11 +5,11 @@ set -e
 source /opt/ros/humble/setup.bash
 source /opt/ros2_ws/install/setup.bash || echo "Warning: Could not source workspace"
 
-# Print ROS2 package status
+# Print ros2 package status
 echo "Checking ROS2 packages:"
 ros2 pkg list | grep -i kobuki || echo "No kobuki packages found"
 
-# Check if we're running in a WSL environment
+# Check if running in WSL
 if grep -q WSL /proc/version; then
     echo "Running in WSL environment"
 fi
