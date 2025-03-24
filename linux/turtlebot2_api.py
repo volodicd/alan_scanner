@@ -56,7 +56,7 @@ class TurtleBot2:
         # Movement parameters
         self.linear_speed = 0.2  # m/s
         self.angular_speed = 1.0  # rad/s
-        self.movement_timeout = 30.0  # seconds
+        self.movement_timeout = 5.0  # seconds
         
         # Robot state
         self.is_moving = False

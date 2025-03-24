@@ -34,8 +34,8 @@ def explore_room_and_return():
         turtle.move(Direction.FORWARD, 1.0)
         
         # Turn left (90 degrees)
-        print("Turning left...")
-        turtle.rotate(math.pi/2)
+        print("Turning around...")
+        turtle.move(Direction.RIGHT, 2.0)
         
         # Move forward for 1 second
         print("Moving forward again...")
@@ -43,7 +43,7 @@ def explore_room_and_return():
         
         # Turn right (180 degrees)
         print("Turning around...")
-        turtle.rotate(-math.pi)
+        turtle.move(Direction.RIGHT, 3.0)
         
         # Move back to approximately the starting position
         print("Returning to approximate start position...")
