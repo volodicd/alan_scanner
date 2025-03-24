@@ -91,7 +91,7 @@ services:
     volumes:
       - .:/app  # Mount the current directory
     devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0  # Also add device to shell container
+      - /dev/kobuki:/dev/kobuki  # Also add device to shell container
     depends_on:
       - kobuki
     stdin_open: true
