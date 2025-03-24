@@ -142,74 +142,44 @@ class TurtleBot2:
     def stop(self):
         """Stop the robot's movement."""
         self.move(Direction.STOP)
-    
+
     def move_distance(self, distance: float, speed: Optional[float] = None) -> bool:
-        """
-        Move the robot forward or backward by a specific distance.
-        
-        Args:
-            distance: Distance to move in meters (positive for forward, negative for backward)
-            speed: Linear speed to use (defaults to self.linear_speed)
-            
-        Returns:
-            True if the movement completed without detecting obstacles, False otherwise
-        """
+        """Move the robot forward or backward by a specific distance."""
         if speed is None:
             speed = self.linear_speed
-        
-        # Record start position
-        start_x = self.odometry['x']
-        start_y = self.odometry['y']
-        
+
         # Set direction based on distance sign
         direction = Direction.FORWARD if distance > 0 else Direction.BACKWARD
-        
-        # Set linear speed (positive or negative based on direction)
-        actual_speed = speed if direction == Direction.FORWARD else -speed
-        
-        # Create and publish velocity message
+
+        # Calculate time needed to move the distance
+        movement_time = abs(distance) / abs(speed)
+
+        # Send movement command
         msg = Twist()
-        msg.linear.x = actual_speed
+        msg.linear.x = speed if direction == Direction.FORWARD else -speed
         msg.angular.z = 0.0
         self.cmd_vel_pub.publish(msg)
-        
-        # Set initial state
-        self.is_moving = True
-        self.current_direction = direction
-        start_time = time.time()
-        
-        # Monitor movement
-        distance_moved = 0.0
-        distance_abs = abs(distance)
+
+        # Wait for calculated duration, checking for obstacles periodically
+        time_step = 0.1  # seconds
+        elapsed_time = 0
         obstacle_detected = False
-        
+
         try:
-            # Continue until we've moved the desired distance or hit an obstacle
-            while (distance_moved < distance_abs and 
-                   not obstacle_detected and 
-                   time.time() - start_time < self.movement_timeout):
-                
-                # Spin once to process callbacks
-                rclpy.spin_once(self.node, timeout_sec=0.1)
-                
-                # Calculate distance moved
-                curr_x = self.odometry['x']
-                curr_y = self.odometry['y']
-                distance_moved = math.sqrt((curr_x - start_x)**2 + (curr_y - start_y)**2)
-                
-                # Check for obstacles
+            while elapsed_time < movement_time and not obstacle_detected:
+                time.sleep(time_step)
+                elapsed_time += time_step
+                rclpy.spin_once(self.node, timeout_sec=0.01)
                 obstacle_detected = self.obstacle_detected != ObstacleLocation.NONE
-                
-                # If obstacle detected, stop and return False
+
                 if obstacle_detected:
                     self.stop()
                     return False
         finally:
-            # Ensure robot stops even if there's an exception
             self.stop()
-        
-        # Return True if we moved the entire distance, False if we hit an obstacle
-        return distance_moved >= distance_abs
+
+        return True
+
 
     def rotate(self, angle: float) -> bool:
         # Determine direction
