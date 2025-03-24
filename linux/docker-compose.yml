@@ -13,7 +13,7 @@ services:
       - ros_net
     # Mount the device at the correct path
     devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0  # Use the actual USB device path
+      - /dev/kobuki:/dev/kobuki  # Use the actual USB device path
     # Use the correct launch file as per official guide
     command: >
       bash -c "source /opt/ros/humble/setup.bash && source /opt/ros2_ws/install/setup.bash &&
@@ -48,7 +48,7 @@ services:
     volumes:
       - .:/app
     devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0  # Also add device to debug container
+      - /dev/kobuki:/dev/kobuki  # Also add device to debug container
     tty: true
     stdin_open: true
     command: >
