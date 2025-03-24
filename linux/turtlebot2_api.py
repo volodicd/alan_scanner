@@ -254,6 +254,7 @@ class TurtleBot2:
             True if exploration completed successfully, False if interrupted
         """
         self.node.get_logger().info('Starting room exploration')
+        self.node.get_logger().info(f"Obstacle status: {self.obstacle_detected}")
         
         # Reset odometry to start fresh
         self.reset_odometry()
@@ -267,7 +268,7 @@ class TurtleBot2:
                     return False
                 
                 # Try to move forward
-                if self.move_distance(1.0):
+                if self.move_distance(10.0):
                     # Successfully moved, mark cells as visited
                     self._mark_current_cell_visited()
                 else:
@@ -275,9 +276,12 @@ class TurtleBot2:
                     found_clear_path = False
                     
                     # Try rotating left first
-                    self.rotate(math.pi/2)  # 90 degrees
+                    self.rotate(math.pi)  # 90 degrees
+                    time.sleep(0.5)
+                    rclpy.spin_once(self.node, timeout_sec=0.1)
                     if self.obstacle_detected == ObstacleLocation.NONE:
                         found_clear_path = True
+                        self.move(Direction.FORWARD, 0.5)
                     
                     # If left rotation didn't work, try right
                     if not found_clear_path:
