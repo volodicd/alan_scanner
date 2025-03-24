@@ -13,10 +13,11 @@ services:
       - ros_net
     # Mount the device at the correct path
     devices:
-      - /dev/kobuki:/dev/kobuki  # Use the actual USB device path
+      - /dev/ttyUSB0:/dev/ttyUSB0  # Use the actual USB device path
     # Use the correct launch file as per official guide
     command: >
       bash -c "source /opt/ros/humble/setup.bash && source /opt/ros2_ws/install/setup.bash &&
+              ln -sf /dev/ttyUSB0 /dev/kobuki &&
               ros2 launch kobuki_node kobuki_node-launch.py"
     restart: on-failure
     environment:
@@ -48,7 +49,7 @@ services:
     volumes:
       - .:/app
     devices:
-      - /dev/kobuki:/dev/kobuki  # Also add device to debug container
+      - /dev/ttyUSB0:/dev/ttyUSB0  # Also add device to debug container
     tty: true
     stdin_open: true
     command: >
@@ -91,7 +92,7 @@ services:
     volumes:
       - .:/app  # Mount the current directory
     devices:
-      - /dev/kobuki:/dev/kobuki  # Also add device to shell container
+      - /dev/ttyUSB0:/dev/ttyUSB0  # Also add device to shell container
     depends_on:
       - kobuki
     stdin_open: true
