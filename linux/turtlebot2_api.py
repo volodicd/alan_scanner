@@ -210,56 +210,29 @@ class TurtleBot2:
         
         # Return True if we moved the entire distance, False if we hit an obstacle
         return distance_moved >= distance_abs
-    
+
     def rotate(self, angle: float) -> bool:
-        """
-        Rotate the robot by a specific angle.
-        
-        Args:
-            angle: Angle to rotate in radians (positive for counter-clockwise, negative for clockwise)
-            
-        Returns:
-            True if the rotation completed successfully, False otherwise
-        """
-        # Record start orientation
-        start_theta = self.odometry['theta']
-        
         # Determine direction
         direction = Direction.LEFT if angle > 0 else Direction.RIGHT
-        
-        # Set angular velocity (positive or negative based on direction)
+
+        # Set angular velocity
         actual_speed = self.angular_speed if direction == Direction.LEFT else -self.angular_speed
-        
-        # Create and publish velocity message
+
+        # Calculate time needed to rotate
+        rotation_time = abs(angle) / abs(actual_speed)
+
+        # Send movement command
         msg = Twist()
         msg.linear.x = 0.0
         msg.angular.z = actual_speed
         self.cmd_vel_pub.publish(msg)
-        
-        # Set initial state
-        self.is_moving = True
-        self.current_direction = direction
-        start_time = time.time()
-        
-        # Calculate target theta
-        target_theta = start_theta + angle
-        # Normalize to [-π, π]
-        target_theta = ((target_theta + math.pi) % (2 * math.pi)) - math.pi
-        
-        # Monitor rotation
-        try:
-            # Continue until we've rotated the desired angle or timeout
-            while (abs(self._angle_diff(self.odometry['theta'], target_theta)) > 0.05 and 
-                   time.time() - start_time < self.movement_timeout):
-                
-                # Spin once to process callbacks
-                rclpy.spin_once(self.node, timeout_sec=0.1)
-        finally:
-            # Ensure robot stops even if there's an exception
-            self.stop()
-        
-        # Return True if rotation was successful
-        return abs(self._angle_diff(self.odometry['theta'], target_theta)) <= 0.05
+
+        # Wait for calculated duration
+        time.sleep(rotation_time)
+
+        # Stop rotation
+        self.stop()
+        return True
     
     def reset_odometry(self):
         """Reset the robot's odometry."""
