@@ -1,0 +1,22 @@
+version: '3'
+
+services:
+  # Simple all-in-one service for Mac
+  turtlebot:
+    build:
+      context: ..
+      dockerfile: ../Dockerfile.mac
+    container_name: turtlebot2_mac
+    volumes:
+      - .:/app
+    # For testing without hardware in Mac environment
+    command: >
+      bash -c "echo 'Starting in simulation mode...' &&
+               cd /app && 
+               python3 -c \"
+               from turtlebot2_api import TurtleBot2, Direction;
+               import time;
+               print('Initializing API...');
+               robot = TurtleBot2();
+               print('API initialized successfully!');
+               \""

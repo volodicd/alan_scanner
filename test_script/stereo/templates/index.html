@@ -1,0 +1,2383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TurtleBot 2 Stereo Vision & 3D Mapping</title>
+    
+    <!-- Include Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Include Socket.IO client -->
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+    
+    <!-- Monaco Editor for code editing -->
+    <!-- Three.js for 3D point cloud visualization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Include CSS for custom styling -->
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .camera-view {
+            width: 100%;
+            height: 300px;
+            background-color: #212529;
+            position: relative;
+            overflow: hidden;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .camera-view img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .card {
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            background-color: #6c757d;
+            color: white;
+            font-weight: bold;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+        }
+        .nav-tabs .nav-link.active {
+            font-weight: bold;
+        }
+        .code-editor {
+            height: 500px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        .logs-container {
+            height: 300px;
+            overflow-y: auto;
+            background-color: #212529;
+            color: #fff;
+            padding: 10px;
+            font-family: monospace;
+            border-radius: 4px;
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-online {
+            background-color: #198754;
+        }
+        .status-offline {
+            background-color: #dc3545;
+        }
+        .panel-header {
+            background-color: #343a40;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 4px 4px 0 0;
+            font-weight: bold;
+        }
+        .panel-body {
+            background-color: white;
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            padding: 15px;
+        }
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        .title-bar {
+            background-color: #343a40;
+            color: white;
+            padding: 15px 0;
+            margin-bottom: 20px;
+        }
+        .control-button {
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .parameter-section {
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .point-cloud-container {
+            width: 100%;
+            height: 400px;
+            background-color: #212529;
+            position: relative;
+            overflow: hidden;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .full-height {
+            height: 100%;
+        }
+        .calibration-progress {
+            height: 30px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Title bar -->
+    <div class="title-bar">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1><i class="fas fa-robot"></i> TurtleBot 2 Stereo Vision & 3D Mapping Control</h1>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div id="connection-status">
+                        <span class="status-indicator status-offline" id="status-indicator"></span>
+                        <span id="status-text">Connecting...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main container -->
+    <div class="container">
+        <!-- Primary tabs -->
+        <ul class="nav nav-tabs mb-4" id="mainTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab" aria-controls="dashboard" aria-selected="true">
+                    <i class="fas fa-tachometer-alt"></i> Dashboard
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="calibration-tab" data-bs-toggle="tab" data-bs-target="#calibration" type="button" role="tab" aria-controls="calibration" aria-selected="false">
+                    <i class="fas fa-sliders-h"></i> Calibration
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="mapping-tab" data-bs-toggle="tab" data-bs-target="#mapping" type="button" role="tab" aria-controls="mapping" aria-selected="false">
+                    <i class="fas fa-map-marked-alt"></i> 3D Mapping
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="navigation-tab" data-bs-toggle="tab" data-bs-target="#navigation" type="button" role="tab" aria-controls="navigation" aria-selected="false">
+                    <i class="fas fa-route"></i> Navigation
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="code-tab" data-bs-toggle="tab" data-bs-target="#code" type="button" role="tab" aria-controls="code" aria-selected="false">
+                    <i class="fas fa-code"></i> Code Editor
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logs" type="button" role="tab" aria-controls="logs" aria-selected="false">
+                    <i class="fas fa-terminal"></i> Logs
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab" aria-controls="settings" aria-selected="false">
+                    <i class="fas fa-cog"></i> Settings
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab content -->
+        <div class="tab-content" id="mainTabContent">
+            <!-- Dashboard Tab -->
+            <div class="tab-pane fade show active" id="dashboard" role="tabpanel" aria-labelledby="dashboard-tab">
+                <div class="row">
+                    <div class="col-md-12 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span><i class="fas fa-video"></i> Camera Feeds</span>
+                                    <div>
+                                        <button class="btn btn-sm btn-success" id="start-stream-btn">
+                                            <i class="fas fa-play"></i> Start Stream
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" id="stop-stream-btn" disabled>
+                                            <i class="fas fa-stop"></i> Stop Stream
+                                        </button>
+                                        <button class="btn btn-sm btn-primary" id="capture-frame-btn" disabled>
+                                            <i class="fas fa-camera"></i> Capture Frame
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="panel-header">Left Camera</div>
+                                        <div class="camera-view">
+                                            <img id="left-camera" src="/static/placeholder-camera.jpg" alt="Left Camera Feed">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="panel-header">Right Camera</div>
+                                        <div class="camera-view">
+                                            <img id="right-camera" src="/static/placeholder-camera.jpg" alt="Right Camera Feed">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row mt-4">
+                                    <div class="col-md-12">
+                                        <div class="panel-header">Disparity Map</div>
+                                        <div class="camera-view">
+                                            <img id="disparity-map" src="/static/placeholder-disparity.jpg" alt="Disparity Map">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-info-circle"></i> System Status
+                            </div>
+                            <div class="card-body">
+                                <table class="table">
+                                    <tbody>
+                                        <tr>
+                                            <th scope="row">Mode</th>
+                                            <td id="current-mode">Idle</td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Left Camera</th>
+                                            <td id="left-camera-status">Not connected</td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Right Camera</th>
+                                            <td id="right-camera-status">Not connected</td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Calibration</th>
+                                            <td id="calibration-status">Not calibrated</td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Stream FPS</th>
+                                            <td id="stream-fps">0</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-chart-bar"></i> Recent Activity
+                            </div>
+                            <div class="card-body">
+                                <div id="recent-activity" class="logs-container" style="height: 215px;">
+                                    <div class="text-muted">No recent activity</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Calibration Tab -->
+            <div class="tab-pane fade" id="calibration" role="tabpanel" aria-labelledby="calibration-tab">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span><i class="fas fa-camera"></i> Calibration View</span>
+                                    <div>
+                                        <button class="btn btn-sm btn-primary" id="start-calibration-btn">
+                                            <i class="fas fa-play"></i> Start Calibration Mode
+                                        </button>
+                                        <button class="btn btn-sm btn-success" id="capture-calibration-btn" disabled>
+                                            <i class="fas fa-camera"></i> Capture Pattern
+                                        </button>
+                                        <button class="btn btn-sm btn-warning" id="process-calibration-btn" disabled>
+                                            <i class="fas fa-cogs"></i> Process Calibration
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="panel-header">Left Camera</div>
+                                        <div class="camera-view">
+                                            <img id="calib-left-camera" src="/static/placeholder-camera.jpg" alt="Left Camera Feed">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="panel-header">Right Camera</div>
+                                        <div class="camera-view">
+                                            <img id="calib-right-camera" src="/static/placeholder-camera.jpg" alt="Right Camera Feed">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mt-4">
+                                    <div class="col-12">
+                                        <div class="parameter-section">
+                                            <h5>Calibration Parameters</h5>
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="checkerboard-cols" class="form-label">Checkerboard Columns</label>
+                                                        <input type="number" class="form-control" id="checkerboard-cols" value="8">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="checkerboard-rows" class="form-label">Checkerboard Rows</label>
+                                                        <input type="number" class="form-control" id="checkerboard-rows" value="6">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="square-size" class="form-label">Square Size (m)</label>
+                                                        <input type="number" class="form-control" id="square-size" value="0.015" step="0.001">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="min-pairs" class="form-label">Minimum Pairs</label>
+                                                        <input type="number" class="form-control" id="min-pairs" value="10">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <button class="btn btn-primary" id="update-calib-params-btn">
+                                                <i class="fas fa-save"></i> Update Parameters
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-clipboard-list"></i> Calibration Progress
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-4">
+                                    <h5>Pattern Detection</h5>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="me-2">Left Camera:</span>
+                                        <i class="fas fa-times-circle text-danger" id="left-pattern-indicator"></i>
+                                    </div>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="me-2">Right Camera:</span>
+                                        <i class="fas fa-times-circle text-danger" id="right-pattern-indicator"></i>
+                                    </div>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="me-2">Both Cameras:</span>
+                                        <i class="fas fa-times-circle text-danger" id="both-pattern-indicator"></i>
+                                    </div>
+                                    <div class="d-flex align-items-center mb-2" id="stability-container" style="display: none;">
+                                        <span class="me-2">Stable for:</span>
+                                        <span id="stability-time" class="text-info">0.0s</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <h5>Auto-Capture Settings</h5>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="auto-capture-toggle" checked>
+                                        <label class="form-check-label" for="auto-capture-toggle">Enable Auto-Capture</label>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="stability-threshold" class="form-label">Stability Threshold (seconds)</label>
+                                        <input type="range" class="form-range" id="stability-threshold" min="0.5" max="10" step="0.5" value="3.0">
+                                        <div class="d-flex justify-content-between">
+                                            <small>0.5s</small>
+                                            <small id="stability-value">3.0s</small>
+                                            <small>10s</small>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-sm btn-primary" id="update-auto-capture-btn">
+                                        <i class="fas fa-save"></i> Update Auto-Capture Settings
+                                    </button>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <h5>Captured Pairs: <span id="captured-pairs-count">0</span></h5>
+                                    <div class="progress calibration-progress">
+                                        <div class="progress-bar progress-bar-striped" id="captured-progress" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <h5>Calibration Logs</h5>
+                                    <div id="calibration-logs" class="logs-container" style="height: 100px; font-size: 0.8rem;">
+                                        <div class="text-muted">No calibration logs yet</div>
+                                    </div>
+                                </div>
+                                
+                                <div id="calibration-result" class="alert alert-info d-none">
+                                    <h5>Calibration Results</h5>
+                                    <p>RMS Error: <span id="rms-error">-</span></p>
+                                    <p>Date: <span id="calibration-date">-</span></p>
+                                </div>
+                                
+                                <div id="calibration-pairs-list" class="logs-container mt-3" style="height: 150px;">
+                                    <div class="text-muted">No calibration pairs captured yet</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3D Mapping Tab -->
+            <div class="tab-pane fade" id="mapping" role="tabpanel" aria-labelledby="mapping-tab">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span><i class="fas fa-cube"></i> 3D Map View</span>
+                                    <div>
+                                        <button class="btn btn-sm btn-primary" id="start-mapping-btn">
+                                            <i class="fas fa-play"></i> Start Mapping
+                                        </button>
+                                        <button class="btn btn-sm btn-success" id="capture-point-cloud-btn" disabled>
+                                            <i class="fas fa-camera"></i> Capture Point Cloud
+                                        </button>
+                                        <button class="btn btn-sm btn-warning" id="save-map-btn" disabled>
+                                            <i class="fas fa-save"></i> Save Complete Map
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="point-cloud-container" id="point-cloud-view"></div>
+                                
+                                <div class="row mt-4">
+                                    <div class="col-12">
+                                        <div class="parameter-section">
+                                            <h5>3D Visualization Controls</h5>
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="point-size" class="form-label">Point Size</label>
+                                                        <input type="range" class="form-range" id="point-size" min="1" max="10" value="2">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="mb-3">
+                                                        <label for="color-scheme" class="form-label">Color Scheme</label>
+                                                        <select class="form-select" id="color-scheme">
+                                                            <option value="depth">Depth</option>
+                                                            <option value="height">Height</option>
+                                                            <option value="rgb">RGB</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-md-12">
+                                                    <div class="form-check form-switch">
+                                                        <input class="form-check-input" type="checkbox" id="show-axis">
+                                                        <label class="form-check-label" for="show-axis">Show Coordinate Axis</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-list-ul"></i> Saved Point Clouds
+                            </div>
+                            <div class="card-body">
+                                <div id="point-cloud-list" class="logs-container" style="height: 300px;">
+                                    <div class="text-muted">No point clouds saved yet</div>
+                                </div>
+                                <div class="mt-3">
+                                    <button class="btn btn-sm btn-secondary" id="refresh-point-cloud-list-btn">
+                                        <i class="fas fa-sync"></i> Refresh List
+                                    </button>
+                                    <button class="btn btn-sm btn-primary" id="merge-selected-btn" disabled>
+                                        <i class="fas fa-object-group"></i> Merge Selected
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card mt-4">
+                            <div class="card-header">
+                                <i class="fas fa-map"></i> Current Map Info
+                            </div>
+                            <div class="card-body">
+                                <table class="table">
+                                    <tbody>
+                                        <tr>
+                                            <th scope="row">Total Points</th>
+                                            <td id="total-points">0</td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Point Cloud Frames</th>
+                                            <td id="frame-count">0</td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Map Size</th>
+                                            <td id="map-size">0 KB</td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Map Density</th>
+                                            <td id="map-density">0 points/m³</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Tab -->
+            <div class="tab-pane fade" id="navigation" role="tabpanel" aria-labelledby="navigation-tab">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span><i class="fas fa-map-marked-alt"></i> Navigation Map</span>
+                                    <div>
+                                        <button class="btn btn-sm btn-primary" id="start-navigation-btn">
+                                            <i class="fas fa-play"></i> Enter Navigation Mode
+                                        </button>
+                                        <button class="btn btn-sm btn-success" id="send-goal-btn" disabled>
+                                            <i class="fas fa-flag-checkered"></i> Send Goal
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" id="cancel-goal-btn" disabled>
+                                            <i class="fas fa-ban"></i> Cancel Goal
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="point-cloud-container" id="navigation-map-view"></div>
+                                <div class="alert alert-info mt-3">
+                                    <i class="fas fa-info-circle"></i> Click on the map to set a navigation goal
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-robot"></i> TurtleBot Status
+                            </div>
+                            <div class="card-body">
+                                <table class="table">
+                                    <tbody>
+                                        <tr>
+                                            <th scope="row">Status</th>
+                                            <td id="robot-status">Disconnected</td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Position</th>
+                                            <td id="robot-position">X: 0.00, Y: 0.00, Z: 0.00</td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Orientation</th>
+                                            <td id="robot-orientation">R: 0.00, P: 0.00, Y: 0.00</td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Battery</th>
+                                            <td id="robot-battery">Unknown</td>
+                                        </tr>
+                                        <tr>
+                                            <th scope="row">Current Goal</th>
+                                            <td id="current-goal">None</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                
+                                <div class="mt-4">
+                                    <h5>Manual Controls</h5>
+                                    <div class="d-flex justify-content-between mb-3">
+                                        <button class="btn btn-primary control-button" id="move-forward-btn" disabled>
+                                            <i class="fas fa-arrow-up"></i>
+                                        </button>
+                                        <button class="btn btn-primary control-button" id="stop-btn" disabled>
+                                            <i class="fas fa-stop"></i>
+                                        </button>
+                                        <button class="btn btn-primary control-button" id="home-btn" disabled>
+                                            <i class="fas fa-home"></i>
+                                        </button>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <button class="btn btn-primary control-button" id="turn-left-btn" disabled>
+                                            <i class="fas fa-arrow-left"></i>
+                                        </button>
+                                        <button class="btn btn-primary control-button" id="move-backward-btn" disabled>
+                                            <i class="fas fa-arrow-down"></i>
+                                        </button>
+                                        <button class="btn btn-primary control-button" id="turn-right-btn" disabled>
+                                            <i class="fas fa-arrow-right"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card mt-4">
+                            <div class="card-header">
+                                <i class="fas fa-history"></i> Navigation History
+                            </div>
+                            <div class="card-body">
+                                <div id="navigation-history" class="logs-container" style="height: 150px;">
+                                    <div class="text-muted">No navigation history yet</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Code Editor Tab -->
+            <div class="tab-pane fade" id="code" role="tabpanel" aria-labelledby="code-tab">
+                <div class="row">
+                    <div class="col-md-9">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span><i class="fas fa-code"></i> Edit stereo_vision.py</span>
+                                    <div>
+                                        <button class="btn btn-sm btn-success" id="save-code-btn">
+                                            <i class="fas fa-save"></i> Save Changes
+                                        </button>
+                                        <button class="btn btn-sm btn-warning" id="revert-code-btn">
+                                            <i class="fas fa-undo"></i> Revert Changes
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="code-editor" class="code-editor"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-history"></i> Code History
+                            </div>
+                            <div class="card-body">
+<div id="code-versions-list" class="logs-container" style="height: 300px;">
+                                    <div class="text-muted">No version history yet</div>
+                                </div>
+                                <button class="btn btn-primary mt-3" id="rollback-code-btn">
+                                    <i class="fas fa-undo-alt"></i> Rollback to Selected
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="card mt-4">
+                            <div class="card-header">
+                                <i class="fas fa-info-circle"></i> Code Info
+                            </div>
+                            <div class="card-body">
+                                <p><strong>Last Modified:</strong> <span id="code-last-modified">Unknown</span></p>
+                                <p><strong>Size:</strong> <span id="code-size">0 KB</span></p>
+                                <p><strong>Status:</strong> <span id="code-status" class="badge bg-secondary">Unknown</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs Tab -->
+            <div class="tab-pane fade" id="logs" role="tabpanel" aria-labelledby="logs-tab">
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span><i class="fas fa-terminal"></i> Application Logs</span>
+                                    <div>
+                                        <button class="btn btn-sm btn-secondary" id="refresh-logs-btn">
+                                            <i class="fas fa-sync"></i> Refresh
+                                        </button>
+                                        <button class="btn btn-sm btn-primary" id="clear-logs-btn">
+                                            <i class="fas fa-eraser"></i> Clear View
+                                        </button>
+                                        <button class="btn btn-sm btn-warning" id="download-logs-btn">
+                                            <i class="fas fa-download"></i> Download
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="full-logs" class="logs-container" style="height: 500px;">
+                                    <div class="text-muted">Loading logs...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-camera"></i> Camera Settings
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="left-camera-index" class="form-label">Left Camera Index</label>
+                                        <input type="number" class="form-control" id="left-camera-index" min="0" value="0">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="right-camera-index" class="form-label">Right Camera Index</label>
+                                        <input type="number" class="form-control" id="right-camera-index" min="0" value="1">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="camera-width" class="form-label">Resolution Width</label>
+                                        <input type="number" class="form-control" id="camera-width" min="320" step="8" value="640">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="camera-height" class="form-label">Resolution Height</label>
+                                        <input type="number" class="form-control" id="camera-height" min="240" step="8" value="480">
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-primary" id="update-camera-settings-btn">
+                                    <i class="fas fa-save"></i> Update Camera Settings
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="card mt-4">
+                            <div class="card-header">
+                                <i class="fas fa-project-diagram"></i> Disparity Settings
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="window-size" class="form-label">Window Size</label>
+                                        <select class="form-select" id="window-size">
+                                            <option value="3">3x3</option>
+                                            <option value="5">5x5</option>
+                                            <option value="7">7x7</option>
+                                            <option value="9">9x9</option>
+                                            <option value="11" selected>11x11</option>
+                                            <option value="15">15x15</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="num-disparities" class="form-label">Number of Disparities</label>
+                                        <input type="number" class="form-control" id="num-disparities" min="16" step="16" value="112">
+                                        <small class="form-text text-muted">Must be a multiple of 16</small>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="uniqueness-ratio" class="form-label">Uniqueness Ratio</label>
+                                        <input type="range" class="form-range" id="uniqueness-ratio" min="5" max="25" value="15">
+                                        <span id="uniqueness-ratio-value">15</span>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="speckle-window-size" class="form-label">Speckle Window Size</label>
+                                        <input type="range" class="form-range" id="speckle-window-size" min="0" max="200" value="100">
+                                        <span id="speckle-window-size-value">100</span>
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-primary" id="update-disparity-settings-btn">
+                                    <i class="fas fa-save"></i> Update Disparity Settings
+                                </button>
+                                <button class="btn btn-secondary" id="test-disparity-settings-btn">
+                                    <i class="fas fa-vial"></i> Test Settings
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-network-wired"></i> ROS Connection Settings
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="ros-master-url" class="form-label">ROS Master URL</label>
+                                        <input type="text" class="form-control" id="ros-master-url" value="http://localhost:11311">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="turtlebot-name" class="form-label">TurtleBot Name</label>
+                                        <input type="text" class="form-control" id="turtlebot-name" value="turtlebot2">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-12">
+                                        <label for="map-frame" class="form-label">Map Frame</label>
+                                        <input type="text" class="form-control" id="map-frame" value="map">
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-primary" id="update-ros-settings-btn">
+                                    <i class="fas fa-save"></i> Update ROS Settings
+                                </button>
+                                <button class="btn btn-warning" id="test-ros-connection-btn">
+                                    <i class="fas fa-plug"></i> Test Connection
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="card mt-4">
+                            <div class="card-header">
+                                <i class="fas fa-server"></i> Server Settings
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="server-host" class="form-label">Host</label>
+                                        <input type="text" class="form-control" id="server-host" value="0.0.0.0">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="server-port" class="form-label">Port</label>
+                                        <input type="number" class="form-control" id="server-port" min="1024" max="65535" value="5000">
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="enable-debug-mode">
+                                            <label class="form-check-label" for="enable-debug-mode">Enable Debug Mode</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="enable-cors" checked>
+                                            <label class="form-check-label" for="enable-cors">Enable CORS</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-exclamation-triangle"></i> Changing server settings requires a restart
+                                </div>
+
+                                <button class="btn btn-primary" id="update-server-settings-btn">
+                                    <i class="fas fa-save"></i> Update Server Settings
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div class="toast-container"></div>
+
+    <!-- Bootstrap JavaScript -->
+    <script>
+    var _temp = window.define;
+    window.define = undefined;
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      window.define = _temp;
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.30.1/min/vs/loader.js"></script>
+
+    <!-- Custom JavaScript for the web interface -->
+    <script>
+        // Socket.IO connection
+        let socket;
+        let isConnected = false;
+        let editor;
+        let selectedCodeVersion = null;
+        let isStreaming = false;
+        let currentMode = 'idle';
+
+        // Initialize the page
+document.addEventListener('DOMContentLoaded', function() {
+    // Connect to Socket.IO server
+    connectWebSocket();
+
+    // Setup tab event listeners for proper initialization
+    document.querySelector('#code-tab').addEventListener('shown.bs.tab', function (event) {
+        initializeCodeEditor();
+    });
+
+    // Setup button event listeners
+    setupEventListeners();
+
+    // Initial status check
+    fetchStatus();
+        const tabElements = document.querySelectorAll('#mainTab [data-bs-toggle="tab"]');
+    tabElements.forEach(tabEl => {
+        new bootstrap.Tab(tabEl);
+    });
+});
+
+        function connectWebSocket() {
+            // Get the current host and port
+            const host = window.location.hostname;
+            const port = window.location.port;
+
+            // Create Socket.IO connection
+            socket = io(`http://${host}:${port}`);
+
+            // Socket.IO event handlers
+            socket.on('connect', function() {
+                isConnected = true;
+                updateConnectionStatus(true);
+                addToActivityLog('Connected to server');
+            });
+
+            socket.on('disconnect', function() {
+                isConnected = false;
+                updateConnectionStatus(false);
+                addToActivityLog('Disconnected from server');
+            });
+
+            socket.on('frames', function(data) {
+                // Update camera feeds
+                if (data.left) {
+                    document.getElementById('left-camera').src = 'data:image/jpeg;base64,' + data.left;
+                    document.getElementById('calib-left-camera').src = 'data:image/jpeg;base64,' + data.left;
+                }
+
+                if (data.right) {
+                    document.getElementById('right-camera').src = 'data:image/jpeg;base64,' + data.right;
+                    document.getElementById('calib-right-camera').src = 'data:image/jpeg;base64,' + data.right;
+                }
+
+                if (data.disparity) {
+                    document.getElementById('disparity-map').src = 'data:image/jpeg;base64,' + data.disparity;
+                }
+
+                // Extract FPS from the frame if available (displayed on the image)
+                // This is just a placeholder - we would need more sophisticated
+                // extraction if we want the exact FPS value from the frame
+                document.getElementById('stream-fps').textContent = 'Streaming';
+            });
+
+            socket.on('error', function(data) {
+                showToast('Error', data.message, 'danger');
+                addToActivityLog('Error: ' + data.message);
+            });
+
+            socket.on('status', function(data) {
+                addToActivityLog(data.message);
+            });
+
+            socket.on('calibration_status', function(data) {
+                updateCalibrationStatus(data);
+            });
+            
+            socket.on('calibration_capture', function(data) {
+                if (data.success) {
+                    // Handle auto-capture event from server
+                    if (data.auto_captured) {
+                        const message = `Auto-captured frame pair ${data.pair_count}/${data.needed_pairs}`;
+                        addToActivityLog(message);
+                        addToCalibrationLog(message);
+                        addToCalibrationLog(`Saved to ${data.left_path} and ${data.right_path}`);
+                        
+                        // Update list and progress
+                        addCalibrationPair(data.timestamp, data.left_path, data.right_path);
+                        
+                        // Update progress bar
+                        const progress = Math.min((data.pair_count / data.needed_pairs) * 100, 100);
+                        const progressBar = document.getElementById('captured-progress');
+                        progressBar.style.width = `${progress}%`;
+                        progressBar.setAttribute('aria-valuenow', progress);
+                        
+                        document.getElementById('captured-pairs-count').textContent = 
+                            data.pair_count + '/' + data.needed_pairs;
+                        
+                        if (data.pair_count >= data.needed_pairs) {
+                            progressBar.classList.add('bg-success');
+                            addToCalibrationLog(`You now have enough image pairs. Ready to process calibration.`);
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateConnectionStatus(isConnected) {
+            const statusIndicator = document.getElementById('status-indicator');
+            const statusText = document.getElementById('status-text');
+
+            if (isConnected) {
+                statusIndicator.classList.remove('status-offline');
+                statusIndicator.classList.add('status-online');
+                statusText.textContent = 'Connected';
+            } else {
+                statusIndicator.classList.remove('status-online');
+                statusIndicator.classList.add('status-offline');
+                statusText.textContent = 'Disconnected';
+            }
+        }
+
+        function setupEventListeners() {
+            // Dashboard tab buttons
+            document.getElementById('start-stream-btn').addEventListener('click', startStream);
+            document.getElementById('stop-stream-btn').addEventListener('click', stopStream);
+            document.getElementById('capture-frame-btn').addEventListener('click', captureFrame);
+
+            // Calibration tab buttons
+            document.getElementById('start-calibration-btn').addEventListener('click', startCalibration);
+            document.getElementById('capture-calibration-btn').addEventListener('click', captureCalibrationFrame);
+            document.getElementById('process-calibration-btn').addEventListener('click', processCalibration);
+            document.getElementById('update-calib-params-btn').addEventListener('click', updateCalibrationParams);
+            document.getElementById('update-auto-capture-btn').addEventListener('click', updateAutoCapture);
+            
+            // Stability threshold slider
+            document.getElementById('stability-threshold').addEventListener('input', function() {
+                document.getElementById('stability-value').textContent = this.value + 's';
+            });
+
+            // Mapping tab buttons
+            document.getElementById('start-mapping-btn').addEventListener('click', startMapping);
+            document.getElementById('capture-point-cloud-btn').addEventListener('click', capturePointCloud);
+            document.getElementById('save-map-btn').addEventListener('click', saveCompleteMap);
+            document.getElementById('refresh-point-cloud-list-btn').addEventListener('click', refreshPointCloudList);
+            document.getElementById('merge-selected-btn').addEventListener('click', mergeSelectedPointClouds);
+
+            // Navigation tab buttons
+            document.getElementById('start-navigation-btn').addEventListener('click', startNavigation);
+            document.getElementById('send-goal-btn').addEventListener('click', sendGoal);
+            document.getElementById('cancel-goal-btn').addEventListener('click', cancelGoal);
+
+            // Manual control buttons
+            document.getElementById('move-forward-btn').addEventListener('click', () => controlRobot('forward'));
+            document.getElementById('move-backward-btn').addEventListener('click', () => controlRobot('backward'));
+            document.getElementById('turn-left-btn').addEventListener('click', () => controlRobot('left'));
+            document.getElementById('turn-right-btn').addEventListener('click', () => controlRobot('right'));
+            document.getElementById('stop-btn').addEventListener('click', () => controlRobot('stop'));
+            document.getElementById('home-btn').addEventListener('click', () => controlRobot('home'));
+
+            // Code editor tab buttons
+            document.getElementById('save-code-btn').addEventListener('click', saveCode);
+            document.getElementById('revert-code-btn').addEventListener('click', revertCode);
+            document.getElementById('rollback-code-btn').addEventListener('click', rollbackCode);
+
+            // Logs tab buttons
+            document.getElementById('refresh-logs-btn').addEventListener('click', refreshLogs);
+            document.getElementById('clear-logs-btn').addEventListener('click', clearLogs);
+            document.getElementById('download-logs-btn').addEventListener('click', downloadLogs);
+
+            // Settings tab buttons
+            document.getElementById('update-camera-settings-btn').addEventListener('click', updateCameraSettings);
+            document.getElementById('update-disparity-settings-btn').addEventListener('click', updateDisparitySettings);
+            document.getElementById('test-disparity-settings-btn').addEventListener('click', testDisparitySettings);
+            document.getElementById('update-ros-settings-btn').addEventListener('click', updateROSSettings);
+            document.getElementById('test-ros-connection-btn').addEventListener('click', testROSConnection);
+            document.getElementById('update-server-settings-btn').addEventListener('click', updateServerSettings);
+
+            // Range input value display
+            document.getElementById('uniqueness-ratio').addEventListener('input', function() {
+                document.getElementById('uniqueness-ratio-value').textContent = this.value;
+            });
+
+            document.getElementById('speckle-window-size').addEventListener('input', function() {
+                document.getElementById('speckle-window-size-value').textContent = this.value;
+            });
+        }
+
+        function fetchStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    isStreaming = data.is_streaming;
+                    currentMode = data.current_mode;
+
+                    // Update UI based on status
+                    document.getElementById('current-mode').textContent = currentMode.charAt(0).toUpperCase() + currentMode.slice(1);
+                    document.getElementById('start-stream-btn').disabled = isStreaming;
+                    document.getElementById('stop-stream-btn').disabled = !isStreaming;
+                    document.getElementById('capture-frame-btn').disabled = !isStreaming;
+
+                    // Additional status updates
+                    if (isStreaming) {
+                        document.getElementById('left-camera-status').textContent = 'Connected';
+                        document.getElementById('right-camera-status').textContent = 'Connected';
+                    } else {
+                        document.getElementById('left-camera-status').textContent = 'Not connected';
+                        document.getElementById('right-camera-status').textContent = 'Not connected';
+                    }
+
+                    // Check if calibration exists
+                    if (data.config && data.config.calibration_exists) {
+                        document.getElementById('calibration-status').textContent = 'Calibrated';
+                    } else {
+                        document.getElementById('calibration-status').textContent = 'Not calibrated';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching status:', error);
+                    addToActivityLog('Error fetching status: ' + error.message);
+                });
+        }
+
+        function addToActivityLog(message) {
+            const activityLog = document.getElementById('recent-activity');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> ${message}`;
+
+            // Remove 'No recent activity' message if it exists
+            const noActivityMsg = activityLog.querySelector('.text-muted');
+            if (noActivityMsg && noActivityMsg.textContent === 'No recent activity') {
+                activityLog.removeChild(noActivityMsg);
+            }
+
+            // Add new log entry
+            activityLog.appendChild(logEntry);
+
+            // Auto-scroll to bottom
+            activityLog.scrollTop = activityLog.scrollHeight;
+        }
+
+        function showToast(title, message, type = 'info') {
+            const toastContainer = document.querySelector('.toast-container');
+
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.className = `toast show bg-${type} text-white`;
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', 'assertive');
+            toast.setAttribute('aria-atomic', 'true');
+
+            const toastHeader = document.createElement('div');
+            toastHeader.className = 'toast-header bg-dark text-white';
+
+            const toastTitle = document.createElement('strong');
+            toastTitle.className = 'me-auto';
+            toastTitle.textContent = title;
+
+            const closeButton = document.createElement('button');
+            closeButton.type = 'button';
+            closeButton.className = 'btn-close btn-close-white';
+            closeButton.setAttribute('data-bs-dismiss', 'toast');
+            closeButton.setAttribute('aria-label', 'Close');
+
+            toastHeader.appendChild(toastTitle);
+            toastHeader.appendChild(closeButton);
+
+            const toastBody = document.createElement('div');
+            toastBody.className = 'toast-body';
+            toastBody.textContent = message;
+
+            toast.appendChild(toastHeader);
+            toast.appendChild(toastBody);
+
+            // Add toast to container
+            toastContainer.appendChild(toast);
+
+            // Set timeout to remove toast after 5 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    toastContainer.removeChild(toast);
+                }, 500);
+            }, 5000);
+
+            // Add event listener to close button
+            closeButton.addEventListener('click', () => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    toastContainer.removeChild(toast);
+                }, 500);
+            });
+        }
+
+        // ===== Dashboard Tab Functions =====
+        function startStream() {
+            fetch('/api/stream/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ mode: 'test' }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    isStreaming = true;
+                    document.getElementById('start-stream-btn').disabled = true;
+                    document.getElementById('stop-stream-btn').disabled = false;
+                    document.getElementById('capture-frame-btn').disabled = false;
+
+                    addToActivityLog('Stream started in test mode');
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error starting stream:', error);
+                showToast('Error', 'Failed to start stream', 'danger');
+            });
+        }
+
+        function stopStream() {
+            fetch('/api/stream/stop', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    isStreaming = false;
+                    document.getElementById('start-stream-btn').disabled = false;
+                    document.getElementById('stop-stream-btn').disabled = true;
+                    document.getElementById('capture-frame-btn').disabled = true;
+
+                    addToActivityLog('Stream stopped');
+                    document.getElementById('stream-fps').textContent = '0';
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error stopping stream:', error);
+                showToast('Error', 'Failed to stop stream', 'danger');
+            });
+        }
+
+        function captureFrame() {
+            fetch('/api/capture', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addToActivityLog(`Frame captured: ${data.timestamp}`);
+                    showToast('Success', 'Frame captured successfully', 'success');
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error capturing frame:', error);
+                showToast('Error', 'Failed to capture frame', 'danger');
+            });
+        }
+
+        // ===== Calibration Tab Functions =====
+        function updateCalibrationStatus(data) {
+            // Update pattern detection indicators
+            const leftIndicator = document.getElementById('left-pattern-indicator');
+            const rightIndicator = document.getElementById('right-pattern-indicator');
+            const bothIndicator = document.getElementById('both-pattern-indicator');
+            const stabilityContainer = document.getElementById('stability-container');
+            const stabilityTime = document.getElementById('stability-time');
+
+            if (data.left_found) {
+                leftIndicator.className = 'fas fa-check-circle text-success';
+            } else {
+                leftIndicator.className = 'fas fa-times-circle text-danger';
+            }
+
+            if (data.right_found) {
+                rightIndicator.className = 'fas fa-check-circle text-success';
+            } else {
+                rightIndicator.className = 'fas fa-times-circle text-danger';
+            }
+
+            if (data.both_found) {
+                bothIndicator.className = 'fas fa-check-circle text-success';
+                document.getElementById('capture-calibration-btn').disabled = false;
+                
+                // Show stability info if available
+                if (data.stable_seconds !== undefined) {
+                    stabilityContainer.style.display = 'flex';
+                    stabilityTime.textContent = data.stable_seconds + 's';
+                    
+                    // If close to threshold, change color to indicate imminent capture
+                    const threshold = parseFloat(document.getElementById('stability-threshold').value);
+                    if (data.auto_capture && data.stable_seconds > threshold * 0.7) {
+                        stabilityTime.className = 'text-warning'; // approaching threshold
+                    }
+                    if (data.auto_capture && data.stable_seconds >= threshold) {
+                        stabilityTime.className = 'text-success'; // at/above threshold
+                    }
+                    
+                    // Add entry to calibration logs when stability changes
+                    addToCalibrationLog(`Checkerboard stable for ${data.stable_seconds}s`);
+                }
+            } else {
+                bothIndicator.className = 'fas fa-times-circle text-danger';
+                document.getElementById('capture-calibration-btn').disabled = true;
+                stabilityContainer.style.display = 'none';
+            }
+            
+            // Update auto-capture UI based on server state
+            if (data.auto_capture !== undefined) {
+                document.getElementById('auto-capture-toggle').checked = data.auto_capture;
+            }
+            
+            // Update calibration progress if available
+            if (data.pairs_captured !== undefined && data.pairs_recommended !== undefined) {
+                document.getElementById('captured-pairs-count').textContent = 
+                    data.pairs_captured + '/' + data.pairs_recommended;
+                
+                const progress = Math.min((data.pairs_captured / data.pairs_needed) * 100, 100);
+                const progressBar = document.getElementById('captured-progress');
+                progressBar.style.width = `${progress}%`;
+                progressBar.setAttribute('aria-valuenow', progress);
+                
+                if (data.pairs_captured >= data.pairs_needed) {
+                    progressBar.classList.add('bg-success');
+                }
+            }
+        }
+        
+        function addToCalibrationLog(message) {
+            const logsContainer = document.getElementById('calibration-logs');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            // Remove "No logs yet" message if present
+            const noLogsMsg = logsContainer.querySelector('.text-muted');
+            if (noLogsMsg && noLogsMsg.textContent === 'No calibration logs yet') {
+                logsContainer.removeChild(noLogsMsg);
+            }
+            
+            // Add the log entry
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> ${message}`;
+            logsContainer.appendChild(logEntry);
+            
+            // Auto-scroll to bottom
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        function startCalibration() {
+            // Get auto-capture settings
+            const autoCapture = document.getElementById('auto-capture-toggle').checked;
+            const stabilityThreshold = parseFloat(document.getElementById('stability-threshold').value);
+            
+            fetch('/api/calibrate/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    auto_capture: autoCapture,
+                    stability_seconds: stabilityThreshold
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addToActivityLog('Calibration mode started');
+                    addToCalibrationLog('Calibration mode started');
+                    
+                    if (data.auto_capture) {
+                        addToCalibrationLog(`Auto-capture enabled (${data.stability_seconds}s threshold)`);
+                    } else {
+                        addToCalibrationLog('Manual capture mode');
+                    }
+                    
+                    // If there are existing pairs, log that
+                    if (data.existing_pairs > 0) {
+                        addToCalibrationLog(`Found ${data.existing_pairs} existing calibration pairs`);
+                    }
+                    
+                    document.getElementById('start-calibration-btn').disabled = true;
+                    document.getElementById('process-calibration-btn').disabled = false;
+
+                    // Check current calibration parameters and update UI
+                    updateCalibrationParamsUI();
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error starting calibration:', error);
+                showToast('Error', 'Failed to start calibration', 'danger');
+            });
+        }
+
+        function updateCalibrationParamsUI() {
+            fetch('/api/config')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.calibration_checkerboard_size) {
+                        document.getElementById('checkerboard-cols').value = data.calibration_checkerboard_size[0];
+                        document.getElementById('checkerboard-rows').value = data.calibration_checkerboard_size[1];
+                    }
+
+                    if (data.calibration_square_size) {
+                        document.getElementById('square-size').value = data.calibration_square_size;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching config:', error);
+                });
+        }
+
+        function updateCalibrationParams() {
+            const cols = parseInt(document.getElementById('checkerboard-cols').value);
+            const rows = parseInt(document.getElementById('checkerboard-rows').value);
+            const squareSize = parseFloat(document.getElementById('square-size').value);
+
+            fetch('/api/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    calibration_checkerboard_size: [cols, rows],
+                    calibration_square_size: squareSize
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Success', 'Calibration parameters updated', 'success');
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating calibration parameters:', error);
+                showToast('Error', 'Failed to update parameters', 'danger');
+            });
+        }
+
+        function captureCalibrationFrame() {
+            // Disable button to prevent multiple clicks
+            document.getElementById('capture-calibration-btn').disabled = true;
+            addToCalibrationLog('Manually capturing calibration frame...');
+            
+            fetch('/api/calibrate/capture', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update calibration pairs list
+                    addCalibrationPair(data.timestamp, data.left_path, data.right_path);
+
+                    // Update progress
+                    const pairsList = document.getElementById('calibration-pairs-list');
+                    const pairsCount = pairsList.querySelectorAll('div:not(.text-muted)').length;
+
+                    document.getElementById('captured-pairs-count').textContent = pairsCount;
+
+                    const minPairs = parseInt(document.getElementById('min-pairs').value);
+                    const progress = Math.min((pairsCount / minPairs) * 100, 100);
+
+                    const progressBar = document.getElementById('captured-progress');
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.setAttribute('aria-valuenow', progress);
+
+                    if (pairsCount >= minPairs) {
+                        progressBar.classList.add('bg-success');
+                    }
+
+                    const captureMessage = `Calibration frame pair captured: ${data.timestamp}`;
+                    addToActivityLog(captureMessage);
+                    addToCalibrationLog(captureMessage);
+                    
+                    // Log file paths
+                    addToCalibrationLog(`Saved images to ${data.left_path} and ${data.right_path}`);
+                    
+                    showToast('Success', 'Calibration pair captured', 'success');
+                    
+                    // If we have enough pairs, suggest processing
+                    if (pairsCount >= minPairs) {
+                        addToCalibrationLog(`You now have ${pairsCount} image pairs (${minPairs} required). Ready to process calibration.`);
+                    }
+                } else {
+                    addToCalibrationLog(`ERROR: ${data.message}`);
+                    showToast('Error', data.message, 'danger');
+                }
+                
+                // Re-enable button if pattern is still visible
+                const bothFound = document.getElementById('both-pattern-indicator').className.includes('success');
+                document.getElementById('capture-calibration-btn').disabled = !bothFound;
+            })
+            .catch(error => {
+                console.error('Error capturing calibration frame:', error);
+                addToCalibrationLog(`ERROR: Failed to capture frame: ${error.message}`);
+                showToast('Error', 'Failed to capture calibration frame', 'danger');
+                document.getElementById('capture-calibration-btn').disabled = false;
+            });
+        }
+
+        function addCalibrationPair(timestamp, leftPath, rightPath) {
+            const pairsList = document.getElementById('calibration-pairs-list');
+
+            // Remove 'No calibration pairs' message if it exists
+            const noMsg = pairsList.querySelector('.text-muted');
+            if (noMsg && noMsg.textContent === 'No calibration pairs captured yet') {
+                pairsList.removeChild(noMsg);
+            }
+
+            const pairEntry = document.createElement('div');
+            pairEntry.className = 'mb-1';
+            pairEntry.innerHTML = `<span class="text-info">[${timestamp}]</span> Calibration pair captured`;
+
+pairsList.appendChild(pairEntry);
+            pairsList.scrollTop = pairsList.scrollHeight;
+        }
+
+        function updateAutoCapture() {
+            const autoCapture = document.getElementById('auto-capture-toggle').checked;
+            const stabilityThreshold = parseFloat(document.getElementById('stability-threshold').value);
+            
+            fetch('/api/calibrate/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    auto_capture: autoCapture,
+                    stability_seconds: stabilityThreshold
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const message = `Auto-capture ${autoCapture ? 'enabled' : 'disabled'}` + 
+                                  (autoCapture ? ` (${stabilityThreshold}s threshold)` : '');
+                    
+                    addToActivityLog(message);
+                    addToCalibrationLog(message);
+                    showToast('Success', 'Auto-capture settings updated', 'success');
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating auto-capture settings:', error);
+                showToast('Error', 'Failed to update auto-capture settings', 'danger');
+            });
+        }
+        
+        function processCalibration() {
+            // Show processing indicator
+            showToast('Info', 'Processing calibration. This may take a while...', 'info');
+            addToCalibrationLog('Starting calibration processing...');
+            
+            // Disable process button to prevent multiple clicks
+            document.getElementById('process-calibration-btn').disabled = true;
+
+            fetch('/api/calibrate/process', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update calibration result display
+                    const resultDiv = document.getElementById('calibration-result');
+                    resultDiv.classList.remove('d-none');
+
+                    document.getElementById('rms-error').textContent = data.rms_error.toFixed(6);
+                    document.getElementById('calibration-date').textContent = new Date().toLocaleString();
+
+                    // Update global calibration status
+                    document.getElementById('calibration-status').textContent = 'Calibrated';
+
+                    const successMessage = `Calibration completed with RMS error: ${data.rms_error.toFixed(6)}`;
+                    addToActivityLog(successMessage);
+                    addToCalibrationLog(successMessage);
+                    addToCalibrationLog(`Calibration files saved to ${data.calibration_file}`);
+                    if (data.backup_file) {
+                        addToCalibrationLog(`Backup saved to ${data.backup_file}`);
+                    }
+                    
+                    showToast('Success', 'Calibration processed successfully', 'success');
+
+                    // Re-enable calibration start button
+                    document.getElementById('start-calibration-btn').disabled = false;
+                } else {
+                    addToCalibrationLog(`ERROR: ${data.message}`);
+                    showToast('Error', data.message, 'danger');
+                    // Re-enable process button
+                    document.getElementById('process-calibration-btn').disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Error processing calibration:', error);
+                addToCalibrationLog(`ERROR: Failed to process calibration: ${error.message}`);
+                showToast('Error', 'Failed to process calibration', 'danger');
+                // Re-enable process button
+                document.getElementById('process-calibration-btn').disabled = false;
+            });
+        }
+
+        // ===== Mapping Tab Functions =====
+        function startMapping() {
+            fetch('/api/mapping/start', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addToActivityLog('Mapping mode started');
+                    document.getElementById('start-mapping-btn').disabled = true;
+                    document.getElementById('capture-point-cloud-btn').disabled = false;
+                    document.getElementById('save-map-btn').disabled = false;
+
+                    // Initialize point cloud viewer
+                    initPointCloudViewer();
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error starting mapping:', error);
+                showToast('Error', 'Failed to start mapping', 'danger');
+            });
+        }
+
+        function capturePointCloud() {
+            fetch('/api/capture', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addToActivityLog(`Point cloud captured: ${data.timestamp}`);
+                    showToast('Success', 'Point cloud captured successfully', 'success');
+
+                    // Update point cloud list
+                    refreshPointCloudList();
+
+                    // If we have a pointcloud path, update the 3D view
+                    if (data.pointcloud_path) {
+                        // This would load the new point cloud into the viewer
+                        // For a real implementation, we'd need more complex code to load the .npy file
+                        updatePointCloudStats();
+                    }
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error capturing point cloud:', error);
+                showToast('Error', 'Failed to capture point cloud', 'danger');
+            });
+        }
+
+        function saveCompleteMap() {
+            // This would save the complete merged map
+            showToast('Info', 'Saving complete map...', 'info');
+
+            // Placeholder - in a real implementation, we'd call an API endpoint
+            setTimeout(() => {
+                showToast('Success', 'Complete map saved successfully', 'success');
+                addToActivityLog('Complete 3D map saved');
+            }, 2000);
+        }
+
+        function refreshPointCloudList() {
+            fetch('/api/pointcloud/list')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updatePointCloudList(data.pointclouds);
+                    } else {
+                        showToast('Error', data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching point cloud list:', error);
+                    showToast('Error', 'Failed to fetch point cloud list', 'danger');
+                });
+        }
+
+        function updatePointCloudList(pointclouds) {
+            const listContainer = document.getElementById('point-cloud-list');
+
+            // Clear current list
+            listContainer.innerHTML = '';
+
+            if (pointclouds.length === 0) {
+                listContainer.innerHTML = '<div class="text-muted">No point clouds saved yet</div>';
+                return;
+            }
+
+            // Add each point cloud to the list
+            pointclouds.forEach(pc => {
+                const pcItem = document.createElement('div');
+                pcItem.className = 'mb-2';
+                pcItem.innerHTML = `
+                    <div class="form-check">
+                        <input class="form-check-input point-cloud-checkbox" type="checkbox"
+                               value="${pc.path}" id="pc-${pc.timestamp}">
+                        <label class="form-check-label" for="pc-${pc.timestamp}">
+                            <span class="text-info">${pc.datetime}</span> - ${pc.filename}
+                        </label>
+                    </div>
+                `;
+
+                listContainer.appendChild(pcItem);
+            });
+
+            // Update merge button state
+            updateMergeButtonState();
+
+            // Add change event listeners to checkboxes
+            const checkboxes = document.querySelectorAll('.point-cloud-checkbox');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', updateMergeButtonState);
+            });
+        }
+
+        function updateMergeButtonState() {
+            const checkboxes = document.querySelectorAll('.point-cloud-checkbox:checked');
+            const mergeButton = document.getElementById('merge-selected-btn');
+
+            mergeButton.disabled = checkboxes.length < 2;
+        }
+
+        function mergeSelectedPointClouds() {
+            const checkboxes = document.querySelectorAll('.point-cloud-checkbox:checked');
+            const selected = Array.from(checkboxes).map(cb => cb.value);
+
+            if (selected.length < 2) {
+                showToast('Error', 'Select at least two point clouds to merge', 'danger');
+                return;
+            }
+
+            showToast('Info', 'Merging point clouds...', 'info');
+
+            // Placeholder - in a real implementation, we'd call an API endpoint
+            setTimeout(() => {
+                showToast('Success', 'Point clouds merged successfully', 'success');
+                addToActivityLog(`Merged ${selected.length} point clouds`);
+                updatePointCloudStats();
+            }, 2000);
+        }
+
+        function updatePointCloudStats() {
+            // Placeholder values - in a real implementation, these would come from the backend
+            document.getElementById('total-points').textContent = '1,256,789';
+            document.getElementById('frame-count').textContent = '12';
+            document.getElementById('map-size').textContent = '48.2 MB';
+            document.getElementById('map-density').textContent = '325 points/m³';
+        }
+
+        function initPointCloudViewer() {
+            // This is a placeholder for initializing a Three.js point cloud viewer
+            // In a real implementation, this would be much more complex
+            const container = document.getElementById('point-cloud-view');
+
+            // Placeholder message while we set up the real viewer
+            container.innerHTML = '<div class="d-flex justify-content-center align-items-center h-100 text-white">Initializing 3D viewer...</div>';
+
+            // In a real implementation, we'd initialize a Three.js scene here
+            // For now, just show a placeholder message after a delay
+            setTimeout(() => {
+                container.innerHTML = '<div class="d-flex justify-content-center align-items-center h-100 text-white">3D point cloud viewer would be shown here</div>';
+            }, 2000);
+        }
+
+        // ===== Navigation Tab Functions =====
+        function startNavigation() {
+            // Placeholder for navigation mode implementation
+            showToast('Info', 'Entering navigation mode...', 'info');
+
+            // Enable navigation controls
+            document.getElementById('send-goal-btn').disabled = false;
+            document.getElementById('cancel-goal-btn').disabled = false;
+
+            // Enable manual controls
+            document.getElementById('move-forward-btn').disabled = false;
+            document.getElementById('move-backward-btn').disabled = false;
+            document.getElementById('turn-left-btn').disabled = false;
+            document.getElementById('turn-right-btn').disabled = false;
+            document.getElementById('stop-btn').disabled = false;
+            document.getElementById('home-btn').disabled = false;
+
+            // Update robot status
+            document.getElementById('robot-status').textContent = 'Connected';
+
+            addToActivityLog('Navigation mode started');
+        }
+
+        function sendGoal() {
+            // Placeholder for sending goal implementation
+            showToast('Info', 'Sending navigation goal to TurtleBot...', 'info');
+
+            setTimeout(() => {
+                document.getElementById('current-goal').textContent = 'X: 2.45, Y: 1.32';
+                showToast('Success', 'Navigation goal sent', 'success');
+                addToActivityLog('Navigation goal sent: X: 2.45, Y: 1.32');
+
+                // Add entry to navigation history
+                addNavigationHistoryEntry('Goal sent: X: 2.45, Y: 1.32');
+            }, 1000);
+        }
+
+        function cancelGoal() {
+            // Placeholder for canceling goal implementation
+            showToast('Info', 'Canceling navigation goal...', 'info');
+
+            setTimeout(() => {
+                document.getElementById('current-goal').textContent = 'None';
+                showToast('Success', 'Navigation goal canceled', 'success');
+                addToActivityLog('Navigation goal canceled');
+
+                // Add entry to navigation history
+                addNavigationHistoryEntry('Goal canceled');
+            }, 1000);
+        }
+
+        function controlRobot(command) {
+            // Placeholder for robot control implementation
+            let commandText = '';
+
+            switch (command) {
+                case 'forward':
+                    commandText = 'Moving forward';
+                    break;
+                case 'backward':
+                    commandText = 'Moving backward';
+                    break;
+                case 'left':
+                    commandText = 'Turning left';
+                    break;
+                case 'right':
+                    commandText = 'Turning right';
+                    break;
+                case 'stop':
+                    commandText = 'Stopping';
+                    break;
+                case 'home':
+                    commandText = 'Returning to home position';
+                    break;
+            }
+
+            showToast('Command', commandText, 'info');
+            addToActivityLog(`Manual control: ${commandText}`);
+
+            // Add entry to navigation history
+            addNavigationHistoryEntry(`Manual: ${commandText}`);
+        }
+
+        function addNavigationHistoryEntry(message) {
+            const historyContainer = document.getElementById('navigation-history');
+
+            // Remove 'No navigation history' message if it exists
+            const noHistoryMsg = historyContainer.querySelector('.text-muted');
+            if (noHistoryMsg && noHistoryMsg.textContent === 'No navigation history yet') {
+                historyContainer.removeChild(noHistoryMsg);
+            }
+
+            const timestamp = new Date().toLocaleTimeString();
+            const historyEntry = document.createElement('div');
+            historyEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> ${message}`;
+
+            historyContainer.appendChild(historyEntry);
+            historyContainer.scrollTop = historyContainer.scrollHeight;
+        }
+
+        // ===== Code Editor Tab Functions =====
+        function initializeCodeEditor() {
+            if (editor) {
+                return; // Already initialized
+            }
+
+            // Configure loader for Monaco Editor
+            require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.30.1/min/vs' }});
+            require(['vs/editor/editor.main'], function() {
+                // Fetch the current code
+                fetch('/api/code/current')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Create editor
+                            editor = monaco.editor.create(document.getElementById('code-editor'), {
+                                value: data.code,
+                                language: 'python',
+                                theme: 'vs-dark',
+                                automaticLayout: true
+                            });
+
+                            // Fetch code versions
+                            fetchCodeVersions();
+                        } else {
+                            showToast('Error', data.message, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching code:', error);
+                        showToast('Error', 'Failed to fetch code', 'danger');
+                    });
+            });
+        }
+
+        function fetchCodeVersions() {
+            fetch('/api/code/versions')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateCodeVersionsList(data.versions);
+                    } else {
+                        showToast('Error', data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching code versions:', error);
+                    showToast('Error', 'Failed to fetch code versions', 'danger');
+                });
+        }
+
+        function updateCodeVersionsList(versions) {
+            const listContainer = document.getElementById('code-versions-list');
+
+            // Clear current list
+            listContainer.innerHTML = '';
+
+            if (versions.length === 0) {
+                listContainer.innerHTML = '<div class="text-muted">No version history yet</div>';
+                return;
+            }
+
+            // Add each version to the list
+            versions.forEach(version => {
+                const versionItem = document.createElement('div');
+                versionItem.className = 'mb-2';
+                versionItem.innerHTML = `
+                    <div class="form-check">
+                        <input class="form-check-input code-version-radio" type="radio"
+                               name="code-version" value="${version.timestamp}"
+                               id="version-${version.timestamp}">
+                        <label class="form-check-label" for="version-${version.timestamp}">
+                            <span class="text-info">${version.datetime}</span>
+                        </label>
+                    </div>
+                `;
+
+                listContainer.appendChild(versionItem);
+            });
+
+            // Add change event listeners to radio buttons
+            const radios = document.querySelectorAll('.code-version-radio');
+            radios.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    selectedCodeVersion = this.value;
+                });
+            });
+        }
+
+        function saveCode() {
+            if (!editor) {
+                showToast('Error', 'Code editor not initialized', 'danger');
+                return;
+            }
+
+            const code = editor.getValue();
+
+            fetch('/api/code/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ code }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Success', 'Code saved successfully', 'success');
+                    addToActivityLog('Code updated');
+
+                    // Update version list
+                    updateCodeVersionsList(data.backup_versions);
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error saving code:', error);
+                showToast('Error', 'Failed to save code', 'danger');
+            });
+        }
+
+        function revertCode() {
+            if (!editor) {
+                showToast('Error', 'Code editor not initialized', 'danger');
+                return;
+            }
+
+            // Reload the current code
+            fetch('/api/code/current')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        editor.setValue(data.code);
+                        showToast('Info', 'Changes reverted', 'info');
+                    } else {
+                        showToast('Error', data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching code:', error);
+                    showToast('Error', 'Failed to revert changes', 'danger');
+                });
+        }
+
+        function rollbackCode() {
+            if (!selectedCodeVersion) {
+                showToast('Error', 'No version selected', 'warning');
+                return;
+            }
+
+            fetch('/api/code/rollback', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ version: selectedCodeVersion }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Success', `Rolled back to version ${selectedCodeVersion}`, 'success');
+                    addToActivityLog(`Code rolled back to version ${selectedCodeVersion}`);
+
+                    // Reload the editor content
+                    fetch('/api/code/current')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success && editor) {
+                                editor.setValue(data.code);
+                            }
+                        });
+
+                    // Update version list
+                    updateCodeVersionsList(data.backup_versions);
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error rolling back code:', error);
+                showToast('Error', 'Failed to roll back code', 'danger');
+            });
+        }
+
+        // ===== Logs Tab Functions =====
+        function refreshLogs() {
+            fetch('/api/logs')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const logsContainer = document.getElementById('full-logs');
+                        logsContainer.innerHTML = '';
+
+                        data.logs.forEach(log => {
+                            const logLine = document.createElement('div');
+                            logLine.textContent = log;
+                            logsContainer.appendChild(logLine);
+                        });
+
+                        // Auto-scroll to bottom
+                        logsContainer.scrollTop = logsContainer.scrollHeight;
+                    } else {
+                        showToast('Error', data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching logs:', error);
+                    showToast('Error', 'Failed to fetch logs', 'danger');
+                });
+        }
+
+        function clearLogs() {
+            const logsContainer = document.getElementById('full-logs');
+            logsContainer.innerHTML = '<div class="text-muted">Logs cleared from view</div>';
+        }
+
+        function downloadLogs() {
+            fetch('/api/logs')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Create a blob with the logs
+                        const logsText = data.logs.join('\n');
+                        const blob = new Blob([logsText], { type: 'text/plain' });
+
+                        // Create a download link
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `stereo_vision_logs_${new Date().toISOString().replace(/:/g, '-')}.txt`;
+
+                        // Trigger download
+                        document.body.appendChild(a);
+                        a.click();
+
+                        // Clean up
+                        setTimeout(() => {
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                        }, 0);
+                    } else {
+                        showToast('Error', data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error downloading logs:', error);
+                    showToast('Error', 'Failed to download logs', 'danger');
+                });
+        }
+
+        // ===== Settings Tab Functions =====
+        function updateCameraSettings() {
+            const leftCamIdx = parseInt(document.getElementById('left-camera-index').value);
+            const rightCamIdx = parseInt(document.getElementById('right-camera-index').value);
+            const width = parseInt(document.getElementById('camera-width').value);
+            const height = parseInt(document.getElementById('camera-height').value);
+
+            if (leftCamIdx === rightCamIdx) {
+                showToast('Error', 'Left and right camera indices must be different', 'danger');
+                return;
+            }
+
+            fetch('/api/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    left_cam_idx: leftCamIdx,
+                    right_cam_idx: rightCamIdx,
+                    width: width,
+                    height: height
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Success', 'Camera settings updated', 'success');
+                    addToActivityLog('Camera settings updated');
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating camera settings:', error);
+                showToast('Error', 'Failed to update camera settings', 'danger');
+            });
+        }
+
+        function updateDisparitySettings() {
+            const windowSize = parseInt(document.getElementById('window-size').value);
+            const numDisparities = parseInt(document.getElementById('num-disparities').value);
+            const uniquenessRatio = parseInt(document.getElementById('uniqueness-ratio').value);
+            const speckleWindowSize = parseInt(document.getElementById('speckle-window-size').value);
+            const speckleRange = 32; // Fixed value, could be made adjustable
+
+            // Check if numDisparities is a multiple of 16
+            if (numDisparities % 16 !== 0) {
+                showToast('Error', 'Number of disparities must be a multiple of 16', 'danger');
+                return;
+            }
+
+            fetch('/api/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    disparity_params: {
+                        window_size: windowSize,
+                        num_disp: numDisparities,
+                        min_disp: 0,
+                        uniqueness_ratio: uniquenessRatio,
+                        speckle_window_size: speckleWindowSize,
+                        speckle_range: speckleRange
+                    }
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Success', 'Disparity settings updated', 'success');
+                    addToActivityLog('Disparity settings updated');
+                } else {
+                    showToast('Error', data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating disparity settings:', error);
+                showToast('Error', 'Failed to update disparity settings', 'danger');
+            });
+        }
+
+        function testDisparitySettings() {
+            // In a real implementation, this would test current disparity settings
+            // by applying them to the current stream
+            showToast('Info', 'Testing disparity settings...', 'info');
+
+            // If stream is active, it should now refresh with the new settings
+            if (isStreaming && currentMode === 'process') {
+                // Refresh the stream
+                addToActivityLog('Applying new disparity settings to stream');
+            } else {
+                showToast('Warning', 'Start the stream in "Process" mode to see the effect of disparity settings', 'warning');
+            }
+        }
+
+        function updateROSSettings() {
+            const rosUrl = document.getElementById('ros-master-url').value;
+            const turtlebotName = document.getElementById('turtlebot-name').value;
+            const mapFrame = document.getElementById('map-frame').value;
+
+            // In a real implementation, this would update ROS connection settings
+            showToast('Info', 'Updating ROS connection settings...', 'info');
+
+            setTimeout(() => {
+                showToast('Success', 'ROS settings updated', 'success');
+                addToActivityLog('ROS connection settings updated');
+            }, 1000);
+        }
+
+        function testROSConnection() {
+            // In a real implementation, this would test the ROS connection
+            showToast('Info', 'Testing ROS connection...', 'info');
+
+            setTimeout(() => {
+                // Simulate a successful connection
+                showToast('Success', 'ROS connection successful', 'success');
+                addToActivityLog('ROS connection tested successfully');
+
+                // Update TurtleBot status
+                document.getElementById('robot-status').textContent = 'Connected';
+                document.getElementById('robot-position').textContent = 'X: 0.00, Y: 0.00, Z: 0.00';
+                document.getElementById('robot-orientation').textContent = 'R: 0.00, P: 0.00, Y: 0.00';
+                document.getElementById('robot-battery').textContent = '95%';
+            }, 2000);
+        }
+
+        function updateServerSettings() {
+            const host = document.getElementById('server-host').value;
+            const port = parseInt(document.getElementById('server-port').value);
+            const debugMode = document.getElementById('enable-debug-mode').checked;
+            const enableCors = document.getElementById('enable-cors').checked;
+
+            // In a real implementation, this would update server settings
+            showToast('Info', 'Updating server settings...', 'info');
+
+            setTimeout(() => {
+                showToast('Success', 'Server settings updated. Restart required to apply changes.', 'success');
+                addToActivityLog('Server settings updated. Restart required to apply changes.');
+            }, 1000);
+        }
+
+        // Initial check for placeholder images
+        document.addEventListener('DOMContentLoaded', function() {
+            // Create placeholder images if they don't exist
+            const placeholderImgUrl = "/static/placeholder-camera.jpg";
+            const placeholderDispUrl = "/static/placeholder-disparity.jpg";
+
+            fetch(placeholderImgUrl)
+                .catch(() => {
+                    console.log("Creating placeholder images...");
+                    createPlaceholderImages();
+                });
+        });
+
+        function createPlaceholderImages() {
+            // Create a placeholder camera image
+            const canvas = document.createElement('canvas');
+            canvas.width = 640;
+            canvas.height = 480;
+            const ctx = canvas.getContext('2d');
+
+            // Fill background
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Add text
+            ctx.font = '24px Arial';
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            ctx.fillText('No Camera Feed', canvas.width / 2, canvas.height / 2 - 12);
+            ctx.fillText('Start Stream to View', canvas.width / 2, canvas.height / 2 + 24);
+
+            // Add camera icon
+            ctx.font = '64px FontAwesome';
+            ctx.fillText('\uf030', canvas.width / 2, canvas.height / 2 - 64);
+
+            // Convert to blob and create object URL
+            canvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+
+                // Update all camera placeholder images
+                document.getElementById('left-camera').src = url;
+                document.getElementById('right-camera').src = url;
+                document.getElementById('calib-left-camera').src = url;
+                document.getElementById('calib-right-camera').src = url;
+
+                // Create disparity placeholder (different color)
+                const dispCanvas = document.createElement('canvas');
+                dispCanvas.width = 640;
+                dispCanvas.height = 480;
+                const dispCtx = dispCanvas.getContext('2d');
+
+                // Fill background
+                dispCtx.fillStyle = '#000';
+                dispCtx.fillRect(0, 0, dispCanvas.width, dispCanvas.height);
+
+                // Add text
+                dispCtx.font = '24px Arial';
+                dispCtx.fillStyle = '#fff';
+                dispCtx.textAlign = 'center';
+                dispCtx.fillText('No Disparity Map', dispCanvas.width / 2, dispCanvas.height / 2 - 12);
+                dispCtx.fillText('Calibration Required', dispCanvas.width / 2, dispCanvas.height / 2 + 24);
+
+                // Add icon
+                dispCtx.font = '64px FontAwesome';
+                dispCtx.fillText('\uf07e', dispCanvas.width / 2, dispCanvas.height / 2 - 64);
+
+                dispCanvas.toBlob(function(dispBlob) {
+                    const dispUrl = URL.createObjectURL(dispBlob);
+                    document.getElementById('disparity-map').src = dispUrl;
+                });
+            });
+        }
+    </script>
+</body>
+</html>
