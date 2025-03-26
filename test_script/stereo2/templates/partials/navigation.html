@@ -1,0 +1,102 @@
+<!-- navigation.html -->
+<div class="tab-pane fade" id="navigation" role="tabpanel" aria-labelledby="navigation-tab">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-map-marked-alt"></i> Navigation Map</span>
+                        <div>
+                            <button class="btn btn-sm btn-primary" id="start-navigation-btn">
+                                <i class="fas fa-play"></i> Enter Navigation Mode
+                            </button>
+                            <button class="btn btn-sm btn-success" id="send-goal-btn" disabled>
+                                <i class="fas fa-flag-checkered"></i> Send Goal
+                            </button>
+                            <button class="btn btn-sm btn-danger" id="cancel-goal-btn" disabled>
+                                <i class="fas fa-ban"></i> Cancel Goal
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="point-cloud-container" id="navigation-map-view"></div>
+                    <div class="alert alert-info mt-3">
+                        <i class="fas fa-info-circle"></i> Click on the map to set a navigation goal
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-robot"></i> TurtleBot Status
+                </div>
+                <div class="card-body">
+                    <table class="table">
+                        <tbody>
+                        <tr>
+                            <th scope="row">Status</th>
+                            <td id="robot-status">Disconnected</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Position</th>
+                            <td id="robot-position">X: 0.00, Y: 0.00, Z: 0.00</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Orientation</th>
+                            <td id="robot-orientation">R: 0.00, P: 0.00, Y: 0.00</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Battery</th>
+                            <td id="robot-battery">Unknown</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Current Goal</th>
+                            <td id="current-goal">None</td>
+                        </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="mt-4">
+                        <h5>Manual Controls</h5>
+                        <div class="d-flex justify-content-between mb-3">
+                            <button class="btn btn-primary control-button" id="move-forward-btn" disabled>
+                                <i class="fas fa-arrow-up"></i>
+                            </button>
+                            <button class="btn btn-primary control-button" id="stop-btn" disabled>
+                                <i class="fas fa-stop"></i>
+                            </button>
+                            <button class="btn btn-primary control-button" id="home-btn" disabled>
+                                <i class="fas fa-home"></i>
+                            </button>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <button class="btn btn-primary control-button" id="turn-left-btn" disabled>
+                                <i class="fas fa-arrow-left"></i>
+                            </button>
+                            <button class="btn btn-primary control-button" id="move-backward-btn" disabled>
+                                <i class="fas fa-arrow-down"></i>
+                            </button>
+                            <button class="btn btn-primary control-button" id="turn-right-btn" disabled>
+                                <i class="fas fa-arrow-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <i class="fas fa-history"></i> Navigation History
+                </div>
+                <div class="card-body">
+                    <div id="navigation-history" class="logs-container" style="height: 150px;">
+                        <div class="text-muted">No navigation history yet</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

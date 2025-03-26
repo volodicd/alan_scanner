@@ -1,0 +1,112 @@
+<!-- mapping.html -->
+<div class="tab-pane fade" id="mapping" role="tabpanel" aria-labelledby="mapping-tab">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-cube"></i> 3D Map View</span>
+                        <div>
+                            <button class="btn btn-sm btn-primary" id="start-mapping-btn">
+                                <i class="fas fa-play"></i> Start Mapping
+                            </button>
+                            <button class="btn btn-sm btn-success" id="capture-point-cloud-btn" disabled>
+                                <i class="fas fa-camera"></i> Capture Point Cloud
+                            </button>
+                            <button class="btn btn-sm btn-warning" id="save-map-btn" disabled>
+                                <i class="fas fa-save"></i> Save Complete Map
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="point-cloud-container" id="point-cloud-view"></div>
+
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="parameter-section">
+                                <h5>3D Visualization Controls</h5>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="point-size" class="form-label">Point Size</label>
+                                            <input type="range" class="form-range" id="point-size" min="1" max="10"
+                                                   value="2">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="color-scheme" class="form-label">Color Scheme</label>
+                                            <select class="form-select" id="color-scheme">
+                                                <option value="depth">Depth</option>
+                                                <option value="height">Height</option>
+                                                <option value="rgb">RGB</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="show-axis">
+                                            <label class="form-check-label" for="show-axis">Show Coordinate Axis</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-list-ul"></i> Saved Point Clouds
+                </div>
+                <div class="card-body">
+                    <div id="point-cloud-list" class="logs-container" style="height: 300px;">
+                        <div class="text-muted">No point clouds saved yet</div>
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-sm btn-secondary" id="refresh-point-cloud-list-btn">
+                            <i class="fas fa-sync"></i> Refresh List
+                        </button>
+                        <button class="btn btn-sm btn-primary" id="merge-selected-btn" disabled>
+                            <i class="fas fa-object-group"></i> Merge Selected
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <i class="fas fa-map"></i> Current Map Info
+                </div>
+                <div class="card-body">
+                    <table class="table">
+                        <tbody>
+                        <tr>
+                            <th scope="row">Total Points</th>
+                            <td id="total-points">0</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Point Cloud Frames</th>
+                            <td id="frame-count">0</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Map Size</th>
+                            <td id="map-size">0 KB</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Map Density</th>
+                            <td id="map-density">0 points/m³</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

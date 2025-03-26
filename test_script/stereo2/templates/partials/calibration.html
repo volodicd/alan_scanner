@@ -1,0 +1,158 @@
+<!-- calibration.html -->
+<div class="tab-pane fade" id="calibration" role="tabpanel" aria-labelledby="calibration-tab">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-camera"></i> Calibration View</span>
+                        <div>
+                            <button class="btn btn-sm btn-primary" id="start-calibration-btn">
+                                <i class="fas fa-play"></i> Start Calibration Mode
+                            </button>
+                            <button class="btn btn-sm btn-success" id="capture-calibration-btn" disabled>
+                                <i class="fas fa-camera"></i> Capture Pattern
+                            </button>
+                            <button class="btn btn-sm btn-warning" id="process-calibration-btn" disabled>
+                                <i class="fas fa-cogs"></i> Process Calibration
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="panel-header">Left Camera</div>
+                            <div class="camera-view">
+                                <img id="calib-left-camera" src="/static/placeholder-camera.jpg" alt="Left Camera Feed">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="panel-header">Right Camera</div>
+                            <div class="camera-view">
+                                <img id="calib-right-camera" src="/static/placeholder-camera.jpg"
+                                     alt="Right Camera Feed">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="parameter-section">
+                                <h5>Calibration Parameters</h5>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="checkerboard-cols" class="form-label">Checkerboard
+                                                Columns</label>
+                                            <input type="number" class="form-control" id="checkerboard-cols" value="8">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="checkerboard-rows" class="form-label">Checkerboard Rows</label>
+                                            <input type="number" class="form-control" id="checkerboard-rows" value="6">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="square-size" class="form-label">Square Size (m)</label>
+                                            <input type="number" class="form-control" id="square-size" value="0.015"
+                                                   step="0.001">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="min-pairs" class="form-label">Minimum Pairs</label>
+                                            <input type="number" class="form-control" id="min-pairs" value="10">
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary" id="update-calib-params-btn">
+                                    <i class="fas fa-save"></i> Update Parameters
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-clipboard-list"></i> Calibration Progress
+                </div>
+                <div class="card-body">
+                    <div class="mb-4">
+                        <h5>Pattern Detection</h5>
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="me-2">Left Camera:</span>
+                            <i class="fas fa-times-circle text-danger" id="left-pattern-indicator"></i>
+                        </div>
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="me-2">Right Camera:</span>
+                            <i class="fas fa-times-circle text-danger" id="right-pattern-indicator"></i>
+                        </div>
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="me-2">Both Cameras:</span>
+                            <i class="fas fa-times-circle text-danger" id="both-pattern-indicator"></i>
+                        </div>
+                        <div class="d-flex align-items-center mb-2" id="stability-container" style="display: none;">
+                            <span class="me-2">Stable for:</span>
+                            <span id="stability-time" class="text-info">0.0s</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5>Auto-Capture Settings</h5>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="auto-capture-toggle" checked>
+                            <label class="form-check-label" for="auto-capture-toggle">Enable Auto-Capture</label>
+                        </div>
+                        <div class="mb-3">
+                            <label for="stability-threshold" class="form-label">Stability Threshold (seconds)</label>
+                            <input type="range" class="form-range" id="stability-threshold" min="0.5" max="10"
+                                   step="0.5" value="3.0">
+                            <div class="d-flex justify-content-between">
+                                <small>0.5s</small>
+                                <small id="stability-value">3.0s</small>
+                                <small>10s</small>
+                            </div>
+                        </div>
+                        <button class="btn btn-sm btn-primary" id="update-auto-capture-btn">
+                            <i class="fas fa-save"></i> Update Auto-Capture Settings
+                        </button>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5>Captured Pairs: <span id="captured-pairs-count">0</span></h5>
+                        <div class="progress calibration-progress">
+                            <div class="progress-bar progress-bar-striped" id="captured-progress" role="progressbar"
+                                 style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5>Calibration Logs</h5>
+                        <div id="calibration-logs" class="logs-container" style="height: 100px; font-size: 0.8rem;">
+                            <div class="text-muted">No calibration logs yet</div>
+                        </div>
+                    </div>
+
+                    <div id="calibration-result" class="alert alert-info d-none">
+                        <h5>Calibration Results</h5>
+                        <p>RMS Error: <span id="rms-error">-</span></p>
+                        <p>Date: <span id="calibration-date">-</span></p>
+                    </div>
+
+                    <div id="calibration-pairs-list" class="logs-container mt-3" style="height: 150px;">
+                        <div class="text-muted">No calibration pairs captured yet</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

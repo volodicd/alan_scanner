@@ -583,6 +583,7 @@ def stop_stream():
         return jsonify({'success': False, 'message': 'Stream is not running'})
 
     is_streaming = False
+    # Wait for thread to finish
     if stream_thread is not None and stream_thread.is_alive():
         stream_thread.join(timeout=2.0)
 

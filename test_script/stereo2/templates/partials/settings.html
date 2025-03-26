@@ -1,0 +1,160 @@
+<!-- settings.html -->
+<div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-camera"></i> Camera Settings
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="left-camera-index" class="form-label">Left Camera Index</label>
+                            <input type="number" class="form-control" id="left-camera-index" min="0" value="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="right-camera-index" class="form-label">Right Camera Index</label>
+                            <input type="number" class="form-control" id="right-camera-index" min="0" value="1">
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="camera-width" class="form-label">Resolution Width</label>
+                            <input type="number" class="form-control" id="camera-width" min="320" step="8" value="640">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="camera-height" class="form-label">Resolution Height</label>
+                            <input type="number" class="form-control" id="camera-height" min="240" step="8" value="480">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" id="update-camera-settings-btn">
+                        <i class="fas fa-save"></i> Update Camera Settings
+                    </button>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <i class="fas fa-project-diagram"></i> Disparity Settings
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="window-size" class="form-label">Window Size</label>
+                            <select class="form-select" id="window-size">
+                                <option value="3">3x3</option>
+                                <option value="5">5x5</option>
+                                <option value="7">7x7</option>
+                                <option value="9">9x9</option>
+                                <option value="11" selected>11x11</option>
+                                <option value="15">15x15</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="num-disparities" class="form-label">Number of Disparities</label>
+                            <input type="number" class="form-control" id="num-disparities" min="16" step="16" value="112">
+                            <small class="form-text text-muted">Must be a multiple of 16</small>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="uniqueness-ratio" class="form-label">Uniqueness Ratio</label>
+                            <input type="range" class="form-range" id="uniqueness-ratio" min="5" max="25" value="15">
+                            <span id="uniqueness-ratio-value">15</span>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="speckle-window-size" class="form-label">Speckle Window Size</label>
+                            <input type="range" class="form-range" id="speckle-window-size" min="0" max="200" value="100">
+                            <span id="speckle-window-size-value">100</span>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" id="update-disparity-settings-btn">
+                        <i class="fas fa-save"></i> Update Disparity Settings
+                    </button>
+                    <button class="btn btn-secondary" id="test-disparity-settings-btn">
+                        <i class="fas fa-vial"></i> Test Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-network-wired"></i> ROS Connection Settings
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="ros-master-url" class="form-label">ROS Master URL</label>
+                            <input type="text" class="form-control" id="ros-master-url" value="http://localhost:11311">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="turtlebot-name" class="form-label">TurtleBot Name</label>
+                            <input type="text" class="form-control" id="turtlebot-name" value="turtlebot2">
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label for="map-frame" class="form-label">Map Frame</label>
+                            <input type="text" class="form-control" id="map-frame" value="map">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" id="update-ros-settings-btn">
+                        <i class="fas fa-save"></i> Update ROS Settings
+                    </button>
+                    <button class="btn btn-warning" id="test-ros-connection-btn">
+                        <i class="fas fa-plug"></i> Test Connection
+                    </button>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <i class="fas fa-server"></i> Server Settings
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="server-host" class="form-label">Host</label>
+                            <input type="text" class="form-control" id="server-host" value="0.0.0.0">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="server-port" class="form-label">Port</label>
+                            <input type="number" class="form-control" id="server-port" min="1024" max="65535" value="8080">
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="enable-debug-mode">
+                                <label class="form-check-label" for="enable-debug-mode">Enable Debug Mode</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="enable-cors" checked>
+                                <label class="form-check-label" for="enable-cors">Enable CORS</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i> Changing server settings requires a restart
+                    </div>
+
+                    <button class="btn btn-primary" id="update-server-settings-btn">
+                        <i class="fas fa-save"></i> Update Server Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,52 @@
+<!-- code_editor.html -->
+<div class="tab-pane fade" id="code" role="tabpanel" aria-labelledby="code-tab">
+    <div class="row">
+        <div class="col-md-9">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-code"></i> Edit stereo_vision.py</span>
+                        <div>
+                            <button class="btn btn-sm btn-success" id="save-code-btn">
+                                <i class="fas fa-save"></i> Save Changes
+                            </button>
+                            <button class="btn btn-sm btn-warning" id="revert-code-btn">
+                                <i class="fas fa-undo"></i> Revert Changes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="code-editor" class="code-editor"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-history"></i> Code History
+                </div>
+                <div class="card-body">
+                    <div id="code-versions-list" class="logs-container" style="height: 300px;">
+                        <div class="text-muted">No version history yet</div>
+                    </div>
+                    <button class="btn btn-primary mt-3" id="rollback-code-btn">
+                        <i class="fas fa-undo-alt"></i> Rollback to Selected
+                    </button>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <i class="fas fa-info-circle"></i> Code Info
+                </div>
+                <div class="card-body">
+                    <p><strong>Last Modified:</strong> <span id="code-last-modified">Unknown</span></p>
+                    <p><strong>Size:</strong> <span id="code-size">0 KB</span></p>
+                    <p><strong>Status:</strong> <span id="code-status" class="badge bg-secondary">Unknown</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

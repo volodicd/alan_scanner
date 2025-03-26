@@ -1,0 +1,37 @@
+<!-- index.html -->
+{% extends "base.html" %}
+
+{% block title %}TurtleBot 2 Stereo Vision & 3D Mapping{% endblock %}
+
+{% block additional_css %}
+<!-- Tab-specific stylesheets -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/dashboard.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/calibration.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/mapping.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/navigation.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/code_editor.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/logs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/settings.css') }}">
+{% endblock %}
+
+{% block content %}
+<!-- Include all tab content partials -->
+{% include 'partials/dashboard.html' %}
+{% include 'partials/calibration.html' %}
+{% include 'partials/mapping.html' %}
+{% include 'partials/navigation.html' %}
+{% include 'partials/code_editor.html' %}
+{% include 'partials/logs.html' %}
+{% include 'partials/settings.html' %}
+{% endblock %}
+
+{% block additional_js %}
+<!-- Tab-specific scripts -->
+<script src="{{ url_for('static', filename='js/modules/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/calibration.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/mapping.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/navigation.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/code_editor.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/logs.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modules/settings.js') }}"></script>
+{% endblock %}
