@@ -222,6 +222,8 @@ function applyLogFilters() {
 
 // Init function to be called when the page loads
 function initLogs() {
+    console.log("Initializing logs module");
+
     // Add event listeners for log controls
     document.getElementById('refresh-logs-btn').addEventListener('click', () => refreshLogs());
     document.getElementById('clear-logs-btn').addEventListener('click', clearLogs);
@@ -242,8 +244,15 @@ function initLogs() {
 
     // Load logs when tab is shown
     document.getElementById('logs-tab').addEventListener('shown.bs.tab', function() {
+        console.log("Logs tab shown, refreshing logs");
         refreshLogs();
     });
+
+    // Initial logs load if we're starting on the logs tab
+    if (document.getElementById('logs-tab').classList.contains('active')) {
+        console.log("Logs tab active on page load, loading logs");
+        refreshLogs();
+    }
 }
 
 // Add the initialization to the document ready event

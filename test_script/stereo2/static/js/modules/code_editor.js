@@ -1,12 +1,16 @@
 // code_editor.js
-let editor; // Monaco editor instance
+let editor = null; // Monaco editor instance
 let originalCode = ''; // Original code content for comparison
 let selectedCodeVersion = null; // Currently selected version for rollback
 let editorInitialized = false; // Flag to prevent duplicate initialization
 
 function initializeCodeEditor() {
-    if (editorInitialized) {
-        return; // Already initialized
+    console.log("initializeCodeEditor called");
+
+    // If editor already exists and is attached to DOM, don't create a new one
+    if (editor) {
+        console.log("Editor already exists, not reinitializing");
+        return;
     }
 
     // Show loading indicator
@@ -14,24 +18,33 @@ function initializeCodeEditor() {
         '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>' +
         'Loading editor...</div>';
 
-    // Configure loader for Monaco Editor
-    require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.30.1/min/vs' }});
+    console.log('Loading Monaco editor...');
+
+    // Load the editor
     require(['vs/editor/editor.main'], function() {
+        console.log('Monaco editor loaded, fetching code content');
         // Fetch the current code
         fetchCurrentCode();
     });
 }
 
 function fetchCurrentCode() {
+    console.log('Fetching current code from API');
     fetch('/api/code/current')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
+                console.log('Code fetched successfully');
                 // Save original code
                 originalCode = data.code;
 
-                // Create editor
-                createEditor(data.code);
+                // Create editor - only if it doesn't already exist
+                if (!editor) {
+                    createEditor(data.code);
+                } else {
+                    console.log('Updating existing editor value');
+                    editor.setValue(data.code);
+                }
 
                 // Update code info
                 updateCodeInfo(data);
@@ -42,6 +55,7 @@ function fetchCurrentCode() {
                 // Set initialization flag
                 editorInitialized = true;
             } else {
+                console.error('Error from API:', data.message);
                 showToast('Error', data.message, 'danger');
                 document.getElementById('code-editor').innerHTML =
                     '<div class="alert alert-danger">Failed to load code: ' + data.message + '</div>';
@@ -56,39 +70,76 @@ function fetchCurrentCode() {
 }
 
 function createEditor(code) {
-    // Register Python language for syntax highlighting
-    monaco.languages.register({ id: 'python' });
+    console.log('Creating Monaco editor instance');
 
-    // Define editor options
-    const options = {
-        value: code,
-        language: 'python',
-        theme: 'vs-dark',
-        automaticLayout: true,
-        fontSize: 14,
-        lineNumbers: 'on',
-        scrollBeyondLastLine: false,
-        minimap: {
-            enabled: true
-        },
-        scrollbar: {
-            verticalScrollbarSize: 10,
-            horizontalScrollbarSize: 10
+    // Safety check - if the element already has an editor attached, don't create a new one
+    const editorElement = document.getElementById('code-editor');
+    if (editorElement.classList.contains('monaco-initialized')) {
+        console.warn('Element already has an editor initialized');
+        return;
+    }
+
+    try {
+        // Clear any previous content
+        editorElement.innerHTML = '';
+
+        // Register Python language for syntax highlighting
+        monaco.languages.register({ id: 'python' });
+
+        // Define editor options
+        const options = {
+            value: code,
+            language: 'python',
+            theme: 'vs-dark',
+            automaticLayout: true,
+            fontSize: 14,
+            lineNumbers: 'on',
+            scrollBeyondLastLine: false,
+            minimap: {
+                enabled: true
+            },
+            scrollbar: {
+                verticalScrollbarSize: 10,
+                horizontalScrollbarSize: 10
+            }
+        };
+
+        // Create the editor
+        editor = monaco.editor.create(editorElement, options);
+        console.log('Editor created successfully');
+
+        // Mark the element as having an initialized editor
+        editorElement.classList.add('monaco-initialized');
+
+        // Add change listener to update status
+        editor.onDidChangeModelContent(() => {
+            updateCodeStatus();
+        });
+
+        // Add keyboard shortcut for save (Ctrl+S or Cmd+S)
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
+            saveCode();
+        });
+    } catch (err) {
+        console.error('Error creating editor:', err);
+        editorElement.innerHTML =
+            '<div class="alert alert-danger">Error creating editor: ' + err.message + '</div>';
+    }
+}
+
+function destroyEditor() {
+    // Properly dispose the editor if it exists
+    if (editor) {
+        console.log('Disposing editor instance');
+        editor.dispose();
+        editor = null;
+
+        // Remove the initialized class
+        const editorElement = document.getElementById('code-editor');
+        if (editorElement) {
+            editorElement.classList.remove('monaco-initialized');
         }
-    };
-
-    // Create the editor
-    editor = monaco.editor.create(document.getElementById('code-editor'), options);
-
-    // Add change listener to update status
-    editor.onDidChangeModelContent(() => {
-        updateCodeStatus();
-    });
-
-    // Add keyboard shortcut for save (Ctrl+S or Cmd+S)
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
-        saveCode();
-    });
+    }
 }
 
 function updateCodeInfo(data) {
@@ -121,7 +172,7 @@ function updateCodeStatus() {
     // Compare current code with original
     if (editor && originalCode !== editor.getValue()) {
         statusBadge.textContent = 'Modified';
-        statusBadge.className = 'badge bg-modified';
+        statusBadge.className = 'badge bg-warning';
     } else {
         statusBadge.textContent = 'Unchanged';
         statusBadge.className = 'badge bg-secondary';
@@ -156,7 +207,7 @@ function updateCodeVersionsList(versions) {
         return;
     }
 
-    // Enable rollback button
+    // Enable rollback button (will be enabled when a version is selected)
     document.getElementById('rollback-code-btn').disabled = true;
 
     // Add each version to the list
@@ -238,7 +289,7 @@ function saveCode() {
 
             // Update status
             statusBadge.textContent = 'Saved';
-            statusBadge.className = 'badge bg-saved';
+            statusBadge.className = 'badge bg-success';
 
             // Update code last modified time
             document.getElementById('code-last-modified').textContent = new Date().toLocaleString();
@@ -258,7 +309,7 @@ function saveCode() {
 
             // Update status to show error
             statusBadge.textContent = 'Error';
-            statusBadge.className = 'badge bg-error';
+            statusBadge.className = 'badge bg-danger';
         }
     })
     .catch(error => {
@@ -267,7 +318,7 @@ function saveCode() {
 
         // Update status to show error
         statusBadge.textContent = 'Error';
-        statusBadge.className = 'badge bg-error';
+        statusBadge.className = 'badge bg-danger';
     });
 }
 
@@ -318,7 +369,7 @@ function rollbackCode() {
 
             // Update status to show error
             statusBadge.textContent = 'Error';
-            statusBadge.className = 'badge bg-error';
+            statusBadge.className = 'badge bg-danger';
         }
     })
     .catch(error => {
@@ -327,21 +378,44 @@ function rollbackCode() {
 
         // Update status to show error
         statusBadge.textContent = 'Error';
-        statusBadge.className = 'badge bg-error';
+        statusBadge.className = 'badge bg-danger';
+    });
+}
+
+// Handle tab navigation - clean up editor when leaving the tab
+function handleTabChange() {
+    // Add event to detect when leaving the code tab
+    document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(button => {
+        button.addEventListener('shown.bs.tab', function(event) {
+            // If we're navigating away from code tab
+            if (event.relatedTarget && event.relatedTarget.id === 'code-tab') {
+                // Clean up existing editor when leaving code tab
+                destroyEditor();
+            }
+        });
     });
 }
 
 // Init function to be called when the page loads
 function initCodeEditor() {
+    console.log('Initializing code editor module');
+
     // Add event listeners for the code editor tab
     document.getElementById('code-tab').addEventListener('shown.bs.tab', function() {
+        console.log('Code editor tab shown, initializing editor');
         initializeCodeEditor();
     });
 
     document.getElementById('save-code-btn').addEventListener('click', saveCode);
     document.getElementById('revert-code-btn').addEventListener('click', revertCode);
     document.getElementById('rollback-code-btn').addEventListener('click', rollbackCode);
+
+    // Handle tab navigation cleanup
+    handleTabChange();
 }
 
 // Add the initialization to the document ready event
-document.addEventListener('DOMContentLoaded', initCodeEditor);
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, setting up code editor');
+    initCodeEditor();
+});

@@ -1,5 +1,7 @@
 # app.py
 import os
+import socket
+
 import cv2
 import numpy as np
 import time
@@ -40,7 +42,7 @@ logging.getLogger('socketio').setLevel(logging.WARNING)  # Reduce SocketIO logs
 # Initialize Flask app
 app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = 'stereo_vision_secret_key'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading') # temporary eventlet, should be threading
 
 # Create data directories if they don't exist
 os.makedirs('static/captures', exist_ok=True)
@@ -1195,11 +1197,46 @@ def rollback_code():
 @app.route('/api/code/versions', methods=['GET'])
 def get_code_versions():
     """Get the available code versions for rollback."""
-
-    return jsonify({
-        'success': True,
-        'versions': code_versions
-    })
+    global code_versions
+    
+    try:
+        # Check if code_versions is empty and if backups exist
+        if not code_versions:
+            # Try to load backup versions from directory
+            backup_dir = 'static/code_backups'
+            if os.path.exists(backup_dir):
+                backup_files = [f for f in os.listdir(backup_dir) if f.startswith('stereo_vision_') and f.endswith('.py')]
+                
+                # Sort by timestamp (newest first)
+                backup_files.sort(reverse=True)
+                
+                # Create version entries
+                for filename in backup_files:
+                    # Extract timestamp from filename
+                    timestamp = filename.replace('stereo_vision_', '').replace('.py', '')
+                    try:
+                        # Create datetime object for better display
+                        dt = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
+                        formatted_date = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        # Add to code_versions list
+                        code_versions.append({
+                            'timestamp': timestamp,
+                            'filename': os.path.join(backup_dir, filename),
+                            'datetime': formatted_date
+                        })
+                    except ValueError:
+                        # Skip if timestamp format is invalid
+                        logger.warning(f"Invalid timestamp format in backup file: {filename}")
+                        continue
+        
+        return jsonify({
+            'success': True,
+            'versions': code_versions
+        })
+    except Exception as e:
+        logger.error(f"Failed to get code versions: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 @app.route('/api/code/current', methods=['GET'])
@@ -1207,12 +1244,21 @@ def get_current_code():
     """Get the current stereo_vision.py code."""
 
     try:
+        # Check if file exists first
+        if not os.path.exists('stereo_vision.py'):
+            logger.error("stereo_vision.py file not found")
+            return jsonify({'success': False, 'message': 'stereo_vision.py file not found'}), 404
+            
+        # Get file modified time
+        last_modified = datetime.fromtimestamp(os.path.getmtime('stereo_vision.py')).strftime("%Y-%m-%d %H:%M:%S")
+        
         with open('stereo_vision.py', 'r') as f:
             code = f.read()
 
         return jsonify({
             'success': True,
-            'code': code
+            'code': code,
+            'last_modified': last_modified
         })
 
     except Exception as e:
@@ -1391,10 +1437,10 @@ def get_logs():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
-# Create a simple HTML template for the frontend
-@app.route('/templates/index.html')
-def serve_template():
-    return render_template('index.html')
+# Outdates, will be deleted
+# @app.route('/templates/index.html')
+# def serve_template():
+#     return render_template('index.html')
 
 
 @app.route('/static/<path:path>')
@@ -1411,5 +1457,8 @@ if __name__ == '__main__':
         exit(1)
 
     # Start the Flask-SocketIO server
+    hostname = socket.gethostname()
+    ip = socket.gethostbyname(hostname)
     logger.info("Starting Stereo Vision Web Interface")
+    logger.info(f"Running on http://{ip}:8080")
     socketio.run(app, host='0.0.0.0', port=8080, debug=True)
