@@ -14,9 +14,12 @@ from flask_socketio import SocketIO, emit
 import logging
 import logging.handlers
 from werkzeug.serving import run_simple
+import torch
+import os.path
 
 # Import the StereoVision class from your existing code
 from stereo_vision import StereoVision
+
 
 # Configure logging with more detailed format and DEBUG level
 logging.basicConfig(
@@ -25,7 +28,7 @@ logging.basicConfig(
     handlers=[
         # Rotating file handler to prevent log files from growing too large
         logging.handlers.RotatingFileHandler(
-            "stereo_vision_app.log", 
+            "stereo_vision_app.log",
             maxBytes=10*1024*1024,  # 10MB
             backupCount=5
         ),
@@ -55,6 +58,9 @@ os.makedirs('static/code_backups', exist_ok=True)
 stereo_vision = None
 stream_thread = None
 is_streaming = False
+dl_model = None
+dl_model_loaded = False
+dl_enabled = False
 current_mode = "idle"  # idle, test, calibration, mapping
 current_config = {
     "left_cam_idx": 0,
@@ -72,6 +78,13 @@ current_config = {
         "uniqueness_ratio": 15,
         "speckle_window_size": 100,
         "speckle_range": 32
+    },
+    "disparity_method": "dl",  # 'sgbm' or 'dl'
+    "dl_model_name": "raft_stereo",
+    "dl_params": {
+        "max_disp": 256,
+        "mixed_precision": True,
+        "downscale_factor": 1.0  # For performance tuning
     }
 }
 
@@ -136,9 +149,77 @@ def init_stereo_vision():
         return False
 
 
+def init_dl_model():
+    global dl_model, dl_model_loaded
+
+    try:
+        from models import load_model, get_device_info
+
+        # Log device info
+        device_info = get_device_info()
+        logger.info("Initializing deep learning model with device information:")
+        if device_info['cuda_available']:
+            logger.info(f"CUDA available with {device_info['cuda_device_count']} devices")
+        elif device_info['mps_available']:
+            logger.info("Apple MPS (Metal Performance Shaders) available on M1 Mac")
+        else:
+            logger.info("Running on CPU only - this may be slow for deep learning inference")
+
+        # Set model_name to raft_stereo if using that option
+        model_name = 'raft_stereo' if current_config["disparity_method"] == "dl" else current_config['dl_model_name']
+        current_config['dl_model_name'] = model_name
+        
+        # Check if model weights exist
+        weights_dir = 'models/weights'
+        weights_path = os.path.join(weights_dir, f"{model_name}.pth")
+
+        if not os.path.exists(weights_path):
+            logger.warning(f"Model weights not found at {weights_path}")
+            
+            # Check if alternative names might exist
+            alt_weights = None
+            if model_name == 'raft_stereo':
+                for alt_name in ['raftstereo-middlebury.pth', 'raftstereo-sceneflow.pth']:
+                    alt_path = os.path.join(weights_dir, alt_name)
+                    if os.path.exists(alt_path):
+                        logger.info(f"Found alternative weights at {alt_path}")
+                        weights_path = alt_path
+                        alt_weights = True
+                        break
+            
+            # If no alternatives found, download weights
+            if not alt_weights:
+                from models.utils import download_model_weights
+                logger.info("Attempting to download model weights...")
+                weights_path = download_model_weights(
+                    model_name=model_name,
+                    save_dir=weights_dir
+                )
+
+        # Load model
+        logger.info(f"Loading {model_name} model with weights from {weights_path}...")
+        dl_model = load_model(
+            model_name=model_name,
+            weights_path=weights_path,
+            max_disp=current_config['dl_params']['max_disp']
+        )
+
+        if dl_model is None:
+            logger.error(f"Failed to load {model_name} model")
+            return False
+
+        dl_model_loaded = True
+        logger.info(f"Deep learning model {model_name} loaded successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to initialize deep learning model: {str(e)}")
+        dl_model_loaded = False
+        return False
+
+
 # Stream processing function for different modes
 def process_stream():
-    global is_streaming, current_mode, stereo_vision
+    global is_streaming, current_mode, stereo_vision, dl_model, dl_model_loaded, dl_enabled
 
     logger.info(f"Starting stream in {current_mode} mode")
 
@@ -165,9 +246,9 @@ def process_stream():
             else:
                 # Verify calibration data is valid
                 if (not isinstance(stereo_vision.camera_matrix_left, np.ndarray) or
-                    not isinstance(stereo_vision.dist_coeffs_left, np.ndarray) or
-                    not isinstance(stereo_vision.R1, np.ndarray) or
-                    not isinstance(stereo_vision.P1, np.ndarray)):
+                        not isinstance(stereo_vision.dist_coeffs_left, np.ndarray) or
+                        not isinstance(stereo_vision.R1, np.ndarray) or
+                        not isinstance(stereo_vision.P1, np.ndarray)):
                     logger.error("Invalid calibration data - matrices are not numpy arrays")
                     logger.debug("camera_matrix_left type: %s", type(stereo_vision.camera_matrix_left))
                     logger.debug("dist_coeffs_left type: %s", type(stereo_vision.dist_coeffs_left))
@@ -177,8 +258,8 @@ def process_stream():
                     mapL1, mapL2, mapR1, mapR2 = None, None, None, None
                 else:
                     # Build rectification maps
-                    logger.info("Building rectification maps with image size: %dx%d", 
-                              current_config["width"], current_config["height"])
+                    logger.info("Building rectification maps with image size: %dx%d",
+                                current_config["width"], current_config["height"])
                     mapL1, mapL2 = cv2.initUndistortRectifyMap(
                         stereo_vision.camera_matrix_left, stereo_vision.dist_coeffs_left,
                         stereo_vision.R1, stereo_vision.P1,
@@ -232,6 +313,7 @@ def process_stream():
 
             elif current_mode == "calibration":
                 # Calibration mode - look for checkerboard
+                # [Your existing calibration code - no changes needed]
                 left_gray = cv2.cvtColor(left_frame, cv2.COLOR_BGR2GRAY)
                 right_gray = cv2.cvtColor(right_frame, cv2.COLOR_BGR2GRAY)
 
@@ -254,7 +336,7 @@ def process_stream():
                 found_right, right_corners = cv2.findChessboardCorners(
                     right_gray, cb_size, pattern_flags)
                 detection_time = time.time() - start_time
-                
+
                 # Try with enhanced contrast if not found in both cameras
                 if not (found_left and found_right):
                     logger.debug("Standard detection not successful, trying with enhanced contrast...")
@@ -262,21 +344,21 @@ def process_stream():
                     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
                     left_gray_enhanced = clahe.apply(left_gray)
                     right_gray_enhanced = clahe.apply(right_gray)
-                    
+
                     # Add fast check flag
                     enhanced_flags = pattern_flags | cv2.CALIB_CB_FAST_CHECK
-                    
+
                     if not found_left:
                         found_left, left_corners = cv2.findChessboardCorners(
                             left_gray_enhanced, cb_size, enhanced_flags)
-                    
+
                     if not found_right:
                         found_right, right_corners = cv2.findChessboardCorners(
                             right_gray_enhanced, cb_size, enhanced_flags)
 
                 # Draw corners if found
                 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-                
+
                 if found_left:
                     left_corners = cv2.cornerSubPix(
                         left_gray, left_corners, (11, 11), (-1, -1), criteria)
@@ -292,60 +374,59 @@ def process_stream():
                 # Create status display overlay
                 status_overlay = np.zeros((150, 400, 3), dtype=np.uint8)
                 status_text = "Detecting Checkerboard"
-                
+
                 # Track detection for auto-capture
                 current_time = time.time()
                 both_found = found_left and found_right
-                
+
                 # Update the calibration state
                 if both_found:
                     calibration_state["detected_count"] += 1
-                    
+
                     # Start or continue stability tracking
                     if not calibration_state["is_stable"]:
                         calibration_state["stable_since"] = current_time
                         calibration_state["is_stable"] = True
                         logger.debug("Checkerboard detected and stable tracking started")
-                    
+
                     # Calculate stability duration
                     stability_duration = current_time - calibration_state["stable_since"]
                     status_text = f"DETECTED - Stable for {stability_duration:.1f}s"
-                    
+
                     # Add visual feedback for stability
                     stability_pct = min(100, (stability_duration / current_config["stability_seconds"]) * 100)
                     progress_width = int(380 * (stability_pct / 100))
                     cv2.rectangle(status_overlay, (10, 70), (390, 90), (0, 0, 60), -1)
                     cv2.rectangle(status_overlay, (10, 70), (10 + progress_width, 90), (0, 165, 255), -1)
-                    
+
                     # Auto-capture if stable for required duration and auto-capture is enabled
                     min_capture_interval = 1.0  # Minimum seconds between captures
                     time_since_last_capture = current_time - calibration_state["last_capture_time"]
-                    
-                    if (current_config["auto_capture"] and 
-                        stability_duration >= current_config["stability_seconds"] and
-                        time_since_last_capture > min_capture_interval):
-                        
+
+                    if (current_config["auto_capture"] and
+                            stability_duration >= current_config["stability_seconds"] and
+                            time_since_last_capture > min_capture_interval):
                         # Auto-capture this frame pair
                         logger.info("Auto-capturing calibration frame after %.1f seconds of stability",
-                                   stability_duration)
-                        
+                                    stability_duration)
+
                         # Save the calibration frame pair
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         left_filepath = f"static/calibration/left_{timestamp}.jpg"
                         right_filepath = f"static/calibration/right_{timestamp}.jpg"
-                        
+
                         cv2.imwrite(left_filepath, left_frame)
                         cv2.imwrite(right_filepath, right_frame)
-                        
+
                         # Update capture state
                         calibration_state["captured_pairs"] += 1
                         calibration_state["last_capture_time"] = current_time
                         calibration_state["is_stable"] = False  # Reset stability to prevent rapid captures
-                        
+
                         # Add visual feedback for auto-capture
-                        cv2.putText(status_overlay, "AUTO-CAPTURED!", (80, 120), 
-                                   cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
-                        
+                        cv2.putText(status_overlay, "AUTO-CAPTURED!", (80, 120),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+
                         # Send capture success info via Socket.IO
                         socketio.emit('calibration_capture', {
                             'success': True,
@@ -356,36 +437,37 @@ def process_stream():
                             'pair_count': calibration_state["captured_pairs"],
                             'needed_pairs': calibration_state["min_pairs_needed"]
                         })
-                        
-                        logger.debug("Auto-captured image pair saved to %s and %s", 
-                                   left_filepath, right_filepath)
+
+                        logger.debug("Auto-captured image pair saved to %s and %s",
+                                     left_filepath, right_filepath)
                 else:
                     # Reset stability tracking
                     calibration_state["is_stable"] = False
                     status_text = "NOT DETECTED"
 
                 # Draw the status overlay
-                cv2.putText(status_overlay, status_text, (10, 30), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, 
-                           (0, 255, 0) if both_found else (0, 0, 255), 2)
-                
+                cv2.putText(status_overlay, status_text, (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                            (0, 255, 0) if both_found else (0, 0, 255), 2)
+
                 # Add capture progress
                 progress_text = f"Captured: {calibration_state['captured_pairs']}/{calibration_state['recommended_pairs']}"
-                cv2.putText(status_overlay, progress_text, (10, 50), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
-                
+                cv2.putText(status_overlay, progress_text, (10, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+
                 # Add auto-capture status
                 auto_capture_status = f"Auto-capture: {'ON' if current_config['auto_capture'] else 'OFF'}"
-                cv2.putText(status_overlay, auto_capture_status, (250, 50), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, 
-                           (0, 255, 0) if current_config['auto_capture'] else (100, 100, 100), 1)
+                cv2.putText(status_overlay, auto_capture_status, (250, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (0, 255, 0) if current_config['auto_capture'] else (100, 100, 100), 1)
 
                 # Send calibration status via Socket.IO with detailed info
                 socketio.emit('calibration_status', {
                     'left_found': found_left,
                     'right_found': found_right,
                     'both_found': both_found,
-                    'stable_seconds': round(stability_duration, 1) if both_found and calibration_state["is_stable"] else 0,
+                    'stable_seconds': round(stability_duration, 1) if both_found and calibration_state[
+                        "is_stable"] else 0,
                     'auto_capture': current_config["auto_capture"],
                     'stability_threshold': current_config["stability_seconds"],
                     'pairs_captured': calibration_state["captured_pairs"],
@@ -416,41 +498,167 @@ def process_stream():
                         cv2.line(left_with_lines, (0, i), (left_rect.shape[1], i), (0, 255, 0), 1)
                         cv2.line(right_with_lines, (0, i), (right_rect.shape[1], i), (0, 255, 0), 1)
 
-                    # Compute disparity map
-                    disparity_params = current_config["disparity_params"]
+                    # Use selected disparity method
+                    if current_config["disparity_method"] == "dl" and dl_model_loaded and dl_enabled:
+                        try:
+                            # Process with deep learning model
+                            disparity_start = time.time()
 
-                    # Create a StereoSGBM matcher with current parameters
-                    stereo = cv2.StereoSGBM_create(
-                        minDisparity=disparity_params["min_disp"],
-                        numDisparities=disparity_params["num_disp"],
-                        blockSize=disparity_params["window_size"],
-                        P1=8 * 3 * disparity_params["window_size"] ** 2,
-                        P2=32 * 3 * disparity_params["window_size"] ** 2,
-                        disp12MaxDiff=1,
-                        uniquenessRatio=disparity_params["uniqueness_ratio"],
-                        speckleWindowSize=disparity_params["speckle_window_size"],
-                        speckleRange=disparity_params["speckle_range"],
-                        preFilterCap=63,
-                        mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY
-                    )
+                            # Prepare inputs according to DL parameters
+                            dl_params = current_config["dl_params"]
+                            downscale_factor = dl_params["downscale_factor"]
 
-                    # Convert to grayscale for disparity calculation
-                    left_gray = cv2.cvtColor(left_rect, cv2.COLOR_BGR2GRAY)
-                    right_gray = cv2.cvtColor(right_rect, cv2.COLOR_BGR2GRAY)
+                            # Downscale if needed for faster processing
+                            if downscale_factor != 1.0:
+                                h, w = left_rect.shape[:2]
+                                new_h, new_w = int(h * downscale_factor), int(w * downscale_factor)
+                                left_rect_scaled = cv2.resize(left_rect, (new_w, new_h))
+                                right_rect_scaled = cv2.resize(right_rect, (new_w, new_h))
+                            else:
+                                left_rect_scaled = left_rect
+                                right_rect_scaled = right_rect
 
-                    # Compute the disparity map
-                    disparity = stereo.compute(left_gray, right_gray).astype(np.float32) / 16.0
+                            # Run DL inference
+                            disparity = dl_model.inference(left_rect_scaled, right_rect_scaled)
 
-                    # Normalize for visualization
-                    disp_normalized = cv2.normalize(disparity, None, alpha=0, beta=255,
-                                                    norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-                    disp_color = cv2.applyColorMap(disp_normalized, cv2.COLORMAP_JET)
+                            # Resize back to original if needed
+                            if downscale_factor != 1.0:
+                                disparity = cv2.resize(disparity, (left_rect.shape[1], left_rect.shape[0]))
+                                # Scale disparity values accordingly
+                                disparity = disparity * (1.0 / downscale_factor)
 
+                            disparity_time = time.time() - disparity_start
+
+                            # Log performance
+                            logger.debug(f"DL disparity computation took {disparity_time:.3f} seconds")
+
+                            # Normalize for visualization
+                            disp_normalized = cv2.normalize(disparity, None, alpha=0, beta=255,
+                                                            norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+                            disp_color = cv2.applyColorMap(disp_normalized, cv2.COLORMAP_JET)
+
+                            # Add a label to show we're using DL method
+                            cv2.putText(disp_color, "Method: CREStereo", (10, 30),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+                            # Compute confidence map if requested
+                            if current_config.get("show_confidence", False):
+                                try:
+                                    from models.utils import compute_confidence_map
+                                    confidence = compute_confidence_map(disparity, left_rect, right_rect)
+
+                                    # Visualize confidence map
+                                    confidence_color = cv2.applyColorMap(
+                                        (confidence * 255).astype(np.uint8),
+                                        cv2.COLORMAP_TURBO)
+                                except Exception as e:
+                                    logger.error(f"Error computing confidence map: {str(e)}")
+                                    confidence_color = None
+                            else:
+                                confidence_color = None
+
+                        except Exception as e:
+                            logger.error(f"Error in DL disparity computation: {str(e)}")
+                            logger.error("Falling back to SGBM method")
+
+                            # Fall back to SGBM method
+                            disparity_params = current_config["disparity_params"]
+                            stereo = cv2.StereoSGBM_create(
+                                minDisparity=disparity_params["min_disp"],
+                                numDisparities=disparity_params["num_disp"],
+                                blockSize=disparity_params["window_size"],
+                                P1=8 * 3 * disparity_params["window_size"] ** 2,
+                                P2=32 * 3 * disparity_params["window_size"] ** 2,
+                                disp12MaxDiff=1,
+                                uniquenessRatio=disparity_params["uniqueness_ratio"],
+                                speckleWindowSize=disparity_params["speckle_window_size"],
+                                speckleRange=disparity_params["speckle_range"],
+                                preFilterCap=63,
+                                mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY
+                            )
+
+                            # Convert to grayscale for disparity calculation
+                            left_gray = cv2.cvtColor(left_rect, cv2.COLOR_BGR2GRAY)
+                            right_gray = cv2.cvtColor(right_rect, cv2.COLOR_BGR2GRAY)
+
+                            # Compute the disparity map
+                            disparity = stereo.compute(left_gray, right_gray).astype(np.float32) / 16.0
+
+                            # Normalize for visualization
+                            disp_normalized = cv2.normalize(disparity, None, alpha=0, beta=255,
+                                                            norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+                            disp_color = cv2.applyColorMap(disp_normalized, cv2.COLORMAP_JET)
+
+                            # Add a label to show we're using SGBM fallback
+                            cv2.putText(disp_color, "Method: SGBM (fallback)", (10, 30),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+                            confidence_color = None
+                    else:
+                        # Use SGBM method
+                        disparity_start = time.time()
+                        disparity_params = current_config["disparity_params"]
+
+                        stereo = cv2.StereoSGBM_create(
+                            minDisparity=disparity_params["min_disp"],
+                            numDisparities=disparity_params["num_disp"],
+                            blockSize=disparity_params["window_size"],
+                            P1=8 * 3 * disparity_params["window_size"] ** 2,
+                            P2=32 * 3 * disparity_params["window_size"] ** 2,
+                            disp12MaxDiff=1,
+                            uniquenessRatio=disparity_params["uniqueness_ratio"],
+                            speckleWindowSize=disparity_params["speckle_window_size"],
+                            speckleRange=disparity_params["speckle_range"],
+                            preFilterCap=63,
+                            mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY
+                        )
+
+                        # Convert to grayscale for disparity calculation
+                        left_gray = cv2.cvtColor(left_rect, cv2.COLOR_BGR2GRAY)
+                        right_gray = cv2.cvtColor(right_rect, cv2.COLOR_BGR2GRAY)
+
+                        # Compute the disparity map
+                        disparity = stereo.compute(left_gray, right_gray).astype(np.float32) / 16.0
+                        disparity_time = time.time() - disparity_start
+
+                        # Log performance
+                        logger.debug(f"SGBM disparity computation took {disparity_time:.3f} seconds")
+
+                        # Normalize for visualization
+                        disp_normalized = cv2.normalize(disparity, None, alpha=0, beta=255,
+                                                        norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+                        disp_color = cv2.applyColorMap(disp_normalized, cv2.COLORMAP_JET)
+
+                        # Add a label to show we're using SGBM method
+                        cv2.putText(disp_color, "Method: SGBM", (10, 30),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+                        # Compute confidence map if requested
+                        if current_config.get("show_confidence", False):
+                            try:
+                                # Use stereo_vision's confidence map function for SGBM
+                                confidence = stereo_vision.compute_confidence_map(disparity, left_rect, right_rect)
+
+                                # Visualize confidence map
+                                confidence_color = cv2.applyColorMap(
+                                    (confidence * 255).astype(np.uint8),
+                                    cv2.COLORMAP_TURBO)
+                            except Exception as e:
+                                logger.error(f"Error computing confidence map: {str(e)}")
+                                confidence_color = None
+                        else:
+                            confidence_color = None
+
+                    # Prepare frames to send
                     frames_to_send = {
                         'left': left_with_lines,
                         'right': right_with_lines,
                         'disparity': disp_color
                     }
+
+                    # Add confidence map if available
+                    if confidence_color is not None:
+                        frames_to_send['confidence'] = confidence_color
 
                     # If in mapping mode, can add point cloud generation here
                     if current_mode == "mapping":
@@ -494,7 +702,6 @@ def process_stream():
         pass
 
     logger.info("Streaming stopped")
-
 
 # Route for main page
 @app.route('/')
@@ -544,6 +751,115 @@ def handle_config():
         except Exception as e:
             logger.error(f"Error updating config: {str(e)}")
             return jsonify({'success': False, 'message': str(e)}), 400
+
+
+@app.route('/api/disparity/method', methods=['GET', 'POST'])
+def disparity_method():
+    """Get or set the disparity computation method."""
+    global current_config, dl_model, dl_model_loaded, dl_enabled
+
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'current_method': current_config['disparity_method'],
+            'available_methods': ['sgbm', 'dl'],
+            'dl_available': dl_model_loaded,
+            'dl_enabled': dl_enabled,
+            'dl_model_name': current_config['dl_model_name'] if dl_model_loaded else None
+        })
+
+    elif request.method == 'POST':
+        try:
+            data = request.json
+            method = data.get('method')
+
+            if method not in ['sgbm', 'dl']:
+                return jsonify({
+                    'success': False,
+                    'message': f"Invalid method: {method}. Use 'sgbm' or 'dl'."
+                }), 400
+
+            # Check if DL is available when requested
+            if method == 'dl':
+                if not dl_model_loaded:
+                    current_config['dl_model_name'] = 'raft_stereo'
+                    if not init_dl_model():
+                        return jsonify({
+                            'success': False,
+                            'message': "Deep learning model initialization failed. Using SGBM instead."
+                        }), 500
+
+                # Enable DL processing
+                dl_enabled = True
+
+            # Update configuration
+            current_config['disparity_method'] = method
+
+            return jsonify({
+                'success': True,
+                'message': f"Disparity method set to {method}",
+                'current_method': method,
+                'dl_enabled': dl_enabled
+            })
+
+        except Exception as e:
+            logger.error(f"Error setting disparity method: {str(e)}")
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/disparity/dl_params', methods=['GET', 'POST'])
+def disparity_dl_params():
+    """Get or set the deep learning disparity parameters."""
+    global current_config
+
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'dl_params': current_config['dl_params'],
+            'dl_model_name': current_config['dl_model_name']
+        })
+
+    elif request.method == 'POST':
+        try:
+            data = request.json
+
+            # Validate parameters
+            if 'max_disp' in data:
+                max_disp = int(data['max_disp'])
+                if max_disp < 64 or max_disp > 512:
+                    return jsonify({
+                        'success': False,
+                        'message': "max_disp must be between 64 and 512"
+                    }), 400
+                current_config['dl_params']['max_disp'] = max_disp
+
+            if 'mixed_precision' in data:
+                current_config['dl_params']['mixed_precision'] = bool(data['mixed_precision'])
+
+            if 'downscale_factor' in data:
+                factor = float(data['downscale_factor'])
+                if factor <= 0 or factor > 1.0:
+                    return jsonify({
+                        'success': False,
+                        'message': "downscale_factor must be between 0 and 1.0"
+                    }), 400
+                current_config['dl_params']['downscale_factor'] = factor
+
+            # Model needs to be reinitialized if max_disp changes
+            if 'max_disp' in data and dl_model_loaded:
+                logger.info("max_disp changed - model will be reinitialized on next use")
+                # We'll reinitialize on next use rather than immediately
+
+            return jsonify({
+                'success': True,
+                'message': "Deep learning parameters updated",
+                'dl_params': current_config['dl_params']
+            })
+
+        except Exception as e:
+            logger.error(f"Error setting deep learning parameters: {str(e)}")
+            return jsonify({'success': False, 'message': str(e)}), 500
+
 
 
 @app.route('/api/stream/start', methods=['POST'])
@@ -599,12 +915,12 @@ def start_calibration():
     # Process request parameters
     try:
         data = request.json or {}
-        
+
         # Set auto-capture mode if provided
         if 'auto_capture' in data:
             current_config["auto_capture"] = bool(data['auto_capture'])
             logger.info("Auto-capture mode set to: %s", "enabled" if current_config["auto_capture"] else "disabled")
-        
+
         # Set stability threshold if provided
         if 'stability_seconds' in data:
             stability = float(data['stability_seconds'])
@@ -643,13 +959,13 @@ def start_calibration():
         "recommended_pairs": 20,
         "checkerboard_history": []
     }
-    
+
     # Check if we have existing calibration files to count
     try:
         calibration_files = os.listdir('static/calibration')
         left_images = [f for f in calibration_files if f.startswith('left_') and f.endswith('.jpg')]
         right_images = [f for f in calibration_files if f.startswith('right_') and f.endswith('.jpg')]
-        
+
         # Match timestamps to count valid pairs
         pairs = []
         for left in left_images:
@@ -657,18 +973,18 @@ def start_calibration():
             matching_right = f'right_{left_ts}.jpg'
             if matching_right in right_images:
                 pairs.append((left, matching_right))
-        
+
         # Update calibration state with existing pairs
         calibration_state["captured_pairs"] = len(pairs)
         logger.info("Found %d existing calibration image pairs", len(pairs))
     except Exception as e:
         logger.warning("Error checking existing calibration files: %s", str(e))
-    
+
     # Start calibration process
     try:
         # Backup current calibration if it exists
         backup_current_code()
-        logger.info("Starting calibration mode with auto-capture=%s, stability=%.1fs", 
+        logger.info("Starting calibration mode with auto-capture=%s, stability=%.1fs",
                    current_config["auto_capture"], current_config["stability_seconds"])
 
         # Start calibration mode stream for visual feedback
@@ -697,7 +1013,7 @@ def start_calibration():
 def calibration_settings():
     """Get or update calibration settings."""
     global current_config
-    
+
     if request.method == 'GET':
         # Return current calibration settings
         return jsonify({
@@ -710,12 +1026,12 @@ def calibration_settings():
     elif request.method == 'POST':
         try:
             data = request.json or {}
-            
+
             # Update auto-capture setting
             if 'auto_capture' in data:
                 current_config['auto_capture'] = bool(data['auto_capture'])
                 logger.info("Auto-capture mode %s", "enabled" if current_config['auto_capture'] else "disabled")
-            
+
             # Update stability threshold
             if 'stability_seconds' in data:
                 stability = float(data['stability_seconds'])
@@ -728,21 +1044,21 @@ def calibration_settings():
                     logger.warning("Stability threshold too high, setting to maximum 10.0 seconds")
                 current_config['stability_seconds'] = stability
                 logger.info("Stability threshold set to %.1f seconds", stability)
-            
+
             # Update checkerboard size if provided
             if 'checkerboard_size' in data:
                 size = data['checkerboard_size']
                 if isinstance(size, list) and len(size) == 2:
                     current_config['calibration_checkerboard_size'] = tuple(size)
                     logger.info("Checkerboard size set to %dx%d", size[0], size[1])
-            
+
             # Update square size if provided
             if 'square_size' in data:
                 square_size = float(data['square_size'])
                 if 0.001 <= square_size <= 0.5:  # Reasonable range in meters
                     current_config['calibration_square_size'] = square_size
                     logger.info("Checkerboard square size set to %.3f meters", square_size)
-            
+
             return jsonify({
                 'success': True,
                 'message': 'Calibration settings updated',
@@ -753,7 +1069,7 @@ def calibration_settings():
                     'square_size': current_config.get('calibration_square_size', 0.015)
                 }
             })
-            
+
         except Exception as e:
             logger.error("Failed to update calibration settings: %s", str(e))
             return jsonify({'success': False, 'message': str(e)}), 400
@@ -970,39 +1286,39 @@ def process_calibration():
         # Save calibration to both main and backup files with validation
         try:
             calibration_file = 'stereo_calibration.npy'
-            
+
             # Save the main calibration file
             logger.info("Saving main calibration file to %s", calibration_file)
             np.save(calibration_file, calibration_data)
-            
+
             # Verify the file was saved
             if not os.path.exists(calibration_file):
                 logger.error("Failed to save calibration file! File doesn't exist after saving")
                 raise IOError("Failed to save calibration file")
-            
+
             file_size = os.path.getsize(calibration_file)
             if file_size < 1000:  # Minimum expected file size
                 logger.error("Calibration file suspiciously small (%d bytes), may be corrupted", file_size)
                 socketio.emit('status', {'message': "Warning: Calibration file may be incomplete"})
             else:
                 logger.info("Calibration file saved successfully (%d bytes)", file_size)
-                
+
             # Create and save a timestamped backup
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_file = f'static/calibration/stereo_calibration_{timestamp}.npy'
             logger.info("Saving backup calibration file to %s", backup_file)
             np.save(backup_file, calibration_data)
-            
+
             # Verify the backup file
             if not os.path.exists(backup_file):
                 logger.error("Failed to save backup calibration file!")
                 socketio.emit('status', {'message': "Warning: Backup calibration file failed to save"})
             else:
                 logger.info("Backup calibration file saved successfully")
-                
+
             # Clean up old backup files if there are too many (keep the 10 most recent)
             try:
-                backup_files = [f for f in os.listdir('static/calibration') 
+                backup_files = [f for f in os.listdir('static/calibration')
                               if f.startswith('stereo_calibration_') and f.endswith('.npy')]
                 if len(backup_files) > 10:
                     backup_files.sort()  # Sort by timestamp (oldest first)
@@ -1014,7 +1330,7 @@ def process_calibration():
                     logger.info("Cleaned up %d old calibration backups", len(files_to_remove))
             except Exception as e:
                 logger.warning("Error cleaning up old calibration backups: %s", str(e))
-                
+
         except Exception as e:
             logger.error("Failed to save calibration files: %s", str(e))
             socketio.emit('status', {'message': f"Error saving calibration: {str(e)}"})
@@ -1198,7 +1514,7 @@ def rollback_code():
 def get_code_versions():
     """Get the available code versions for rollback."""
     global code_versions
-    
+
     try:
         # Check if code_versions is empty and if backups exist
         if not code_versions:
@@ -1206,10 +1522,10 @@ def get_code_versions():
             backup_dir = 'static/code_backups'
             if os.path.exists(backup_dir):
                 backup_files = [f for f in os.listdir(backup_dir) if f.startswith('stereo_vision_') and f.endswith('.py')]
-                
+
                 # Sort by timestamp (newest first)
                 backup_files.sort(reverse=True)
-                
+
                 # Create version entries
                 for filename in backup_files:
                     # Extract timestamp from filename
@@ -1218,7 +1534,7 @@ def get_code_versions():
                         # Create datetime object for better display
                         dt = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
                         formatted_date = dt.strftime("%Y-%m-%d %H:%M:%S")
-                        
+
                         # Add to code_versions list
                         code_versions.append({
                             'timestamp': timestamp,
@@ -1229,7 +1545,7 @@ def get_code_versions():
                         # Skip if timestamp format is invalid
                         logger.warning(f"Invalid timestamp format in backup file: {filename}")
                         continue
-        
+
         return jsonify({
             'success': True,
             'versions': code_versions
@@ -1248,10 +1564,10 @@ def get_current_code():
         if not os.path.exists('stereo_vision.py'):
             logger.error("stereo_vision.py file not found")
             return jsonify({'success': False, 'message': 'stereo_vision.py file not found'}), 404
-            
+
         # Get file modified time
         last_modified = datetime.fromtimestamp(os.path.getmtime('stereo_vision.py')).strftime("%Y-%m-%d %H:%M:%S")
-        
+
         with open('stereo_vision.py', 'r') as f:
             code = f.read()
 
@@ -1343,46 +1659,46 @@ def get_logs():
         level = request.args.get('level', '').upper()  # Filter by log level
         limit = int(request.args.get('limit', 100))  # Number of lines to return
         search = request.args.get('search', '')  # Text to search for
-        
+
         # Cap the limit to prevent excessive responses
         if limit > 500:
             limit = 500
-            
+
         # Determine which log file to read
         log_file = "stereo_vision_app.log" if log_type == 'app' else "stereo_vision.log"
-        
+
         if not os.path.exists(log_file):
             return jsonify({
-                'success': False, 
+                'success': False,
                 'message': f"Log file {log_file} not found",
                 'available_logs': [f for f in os.listdir('.') if f.endswith('.log')]
             }), 404
-        
+
         # Read the log file
         log_size = os.path.getsize(log_file)
         logger.debug("Reading log file %s (%.1f KB)", log_file, log_size/1024)
-        
+
         all_logs = []
         with open(log_file, 'r') as f:
             all_logs = f.readlines()
-        
+
         # Apply filters
         filtered_logs = []
         for line in all_logs:
             # Filter by level if specified
             if level and level not in line.upper():
                 continue
-                
+
             # Filter by search text if specified
             if search and search.lower() not in line.lower():
                 continue
-                
+
             filtered_logs.append(line)
-        
+
         # Get the limited number of lines (from the end)
         if limit > 0:
             filtered_logs = filtered_logs[-limit:]
-        
+
         # Create parsed logs with structured information
         parsed_logs = []
         for line in filtered_logs:
@@ -1394,7 +1710,7 @@ def get_logs():
                     module = parts[1]
                     level = parts[2]
                     message = parts[3].strip()
-                    
+
                     parsed_logs.append({
                         'timestamp': timestamp,
                         'module': module,
@@ -1412,7 +1728,7 @@ def get_logs():
                 parsed_logs.append({
                     'raw': line.strip()
                 })
-        
+
         # Log the number of lines returned
         logger.debug("Returning %d log lines (filtered from %d total lines)",
                     len(parsed_logs), len(all_logs))
@@ -1458,7 +1774,7 @@ if __name__ == '__main__':
 
     # Start the Flask-SocketIO server
     hostname = socket.gethostname()
-    ip = socket.gethostbyname(hostname)
+#    ip = socket.gethostbyname(hostname)
     logger.info("Starting Stereo Vision Web Interface")
-    logger.info(f"Running on http://{ip}:8080")
+   # logger.info(f"Running on http://{ip}:8080")
     socketio.run(app, host='0.0.0.0', port=8080, debug=True)
