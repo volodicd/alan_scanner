@@ -1,0 +1,79 @@
+/* settings.css */
+.settings-section {
+    margin-bottom: 2rem;
+}
+
+.form-range {
+    width: 100%;
+}
+
+/* Range input value styling */
+#uniqueness-ratio-value,
+#speckle-window-size-value {
+    font-weight: 500;
+    min-width: 30px;
+    display: inline-block;
+    text-align: center;
+}
+
+/* Switch toggle styling */
+.form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.form-switch .form-check-input {
+    width: 3em;
+    height: 1.5em;
+    cursor: pointer;
+}
+
+.form-switch .form-check-input:focus {
+    border-color: rgba(0, 0, 0, 0.25);
+    outline: 0;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* Settings group styling */
+.settings-group {
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    margin-bottom: 15px;
+    border: 1px solid #dee2e6;
+}
+
+.settings-group h5 {
+    margin-bottom: 15px;
+    color: #495057;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 10px;
+}
+
+/* System information styling */
+.system-info-item {
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.system-info-item:last-child {
+    border-bottom: none;
+}
+
+.system-info-value {
+    font-weight: 500;
+}
+
+/* Camera list styling */
+.camera-item {
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    background-color: #f8f9fa;
+}
+
+.camera-item:hover {
+    background-color: #e9ecef;
+}

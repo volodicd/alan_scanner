@@ -1,37 +1,394 @@
-<!-- index.html -->
 {% extends "base.html" %}
 
-{% block title %}TurtleBot 2 Stereo Vision & 3D Mapping{% endblock %}
+{% block title %}Stereo Vision System{% endblock %}
 
 {% block additional_css %}
 <!-- Tab-specific stylesheets -->
-<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/dashboard.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/calibration.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/mapping.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/navigation.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/code_editor.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/logs.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/modules/settings.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/calibration.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}">
 {% endblock %}
 
 {% block content %}
-<!-- Include all tab content partials -->
-{% include 'partials/dashboard.html' %}
-{% include 'partials/calibration.html' %}
-{% include 'partials/mapping.html' %}
-{% include 'partials/navigation.html' %}
-{% include 'partials/code_editor.html' %}
-{% include 'partials/logs.html' %}
-{% include 'partials/settings.html' %}
+<!-- Dashboard Tab -->
+<div class="tab-pane fade show active" id="dashboard" role="tabpanel" aria-labelledby="dashboard-tab">
+    <div class="row">
+        <div class="col-md-12 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-video"></i> Camera Feeds</span>
+                        <div>
+                            <button class="btn btn-sm btn-success" id="start-stream-btn">
+                                <i class="fas fa-play"></i> Start Stream
+                            </button>
+                            <button class="btn btn-sm btn-danger" id="stop-stream-btn" disabled>
+                                <i class="fas fa-stop"></i> Stop Stream
+                            </button>
+                            <button class="btn btn-sm btn-primary" id="capture-frame-btn" disabled>
+                                <i class="fas fa-camera"></i> Capture Frame
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="panel-header">Left Camera</div>
+                            <div class="camera-view">
+                                <img id="left-camera"
+                                     src="{{ url_for('static', filename='img/placeholder-camera.jpg') }}"
+                                     alt="Left Camera Feed">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="panel-header">Right Camera</div>
+                            <div class="camera-view">
+                                <img id="right-camera"
+                                     src="{{ url_for('static', filename='img/placeholder-camera.jpg') }}"
+                                     alt="Right Camera Feed">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-4">
+                        <div class="col-md-12">
+                            <div class="panel-header">Disparity Map</div>
+                            <div class="camera-view">
+                                <img id="disparity-map"
+                                     src="{{ url_for('static', filename='img/placeholder-disparity.jpg') }}"
+                                     alt="Disparity Map">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-info-circle"></i> System Status
+                </div>
+                <div class="card-body">
+                    <table class="table">
+                        <tbody>
+                        <tr>
+                            <th scope="row">Left Camera</th>
+                            <td id="left-camera-status">Not connected</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Right Camera</th>
+                            <td id="right-camera-status">Not connected</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Calibration</th>
+                            <td id="calibration-status">Not calibrated</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Stream FPS</th>
+                            <td id="stream-fps">0</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-chart-bar"></i> Recent Activity
+                </div>
+                <div class="card-body">
+                    <div id="recent-activity" class="logs-container">
+                        <div class="text-muted">No recent activity</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Calibration Tab -->
+<div class="tab-pane fade" id="calibration" role="tabpanel" aria-labelledby="calibration-tab">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-camera"></i> Calibration View</span>
+                        <div>
+                            <button class="btn btn-sm btn-primary" id="test-detection-btn">
+                                <i class="fas fa-search"></i> Test Detection
+                            </button>
+                            <button class="btn btn-sm btn-success" id="start-calibration-btn">
+                                <i class="fas fa-play"></i> Start Calibration
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="panel-header">Left Camera</div>
+                            <div class="camera-view">
+                                <img id="calib-left-camera"
+                                     src="{{ url_for('static', filename='img/placeholder-camera.jpg') }}"
+                                     alt="Left Camera Feed">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="panel-header">Right Camera</div>
+                            <div class="camera-view">
+                                <img id="calib-right-camera"
+                                     src="{{ url_for('static', filename='img/placeholder-camera.jpg') }}"
+                                     alt="Right Camera Feed">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="parameter-section">
+                                <h5>Calibration Parameters</h5>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="checkerboard-cols" class="form-label">Checkerboard
+                                                Columns</label>
+                                            <input type="number" class="form-control" id="checkerboard-cols" value="7">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="checkerboard-rows" class="form-label">Checkerboard Rows</label>
+                                            <input type="number" class="form-control" id="checkerboard-rows" value="6">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="square-size" class="form-label">Square Size (m)</label>
+                                            <input type="number" class="form-control" id="square-size" value="0.025"
+                                                   step="0.001">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="min-pairs" class="form-label">Minimum Pairs</label>
+                                            <input type="number" class="form-control" id="min-pairs" value="20">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <h5 class="mt-3">Auto-Capture Settings</h5>
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="auto-capture-toggle" checked>
+                                    <label class="form-check-label" for="auto-capture-toggle">Enable
+                                        Auto-Capture</label>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="stability-threshold" class="form-label">Stability Threshold
+                                        (seconds)</label>
+                                    <input type="range" class="form-range" id="stability-threshold" min="0.5" max="10"
+                                           step="0.5" value="3.0">
+                                    <div class="d-flex justify-content-between">
+                                        <small>0.5s</small>
+                                        <small id="stability-value">3.0s</small>
+                                        <small>10s</small>
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-primary" id="update-calib-params-btn">
+                                    <i class="fas fa-save"></i> Update Parameters
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-clipboard-list"></i> Calibration Progress
+                </div>
+                <div class="card-body">
+                    <div class="mb-4">
+                        <h5>Pattern Detection</h5>
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="me-2">Left Camera:</span>
+                            <i class="fas fa-times-circle text-danger" id="left-pattern-indicator"></i>
+                        </div>
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="me-2">Right Camera:</span>
+                            <i class="fas fa-times-circle text-danger" id="right-pattern-indicator"></i>
+                        </div>
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="me-2">Both Cameras:</span>
+                            <i class="fas fa-times-circle text-danger" id="both-pattern-indicator"></i>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5>Captured Pairs: <span id="captured-pairs-count">0</span></h5>
+                        <div class="progress calibration-progress">
+                            <div class="progress-bar progress-bar-striped" id="captured-progress" role="progressbar"
+                                 style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+
+                    <div id="calibration-result" class="alert alert-info d-none">
+                        <h5>Calibration Results</h5>
+                        <p>RMS Error: <span id="rms-error">-</span></p>
+                        <p>Date: <span id="calibration-date">-</span></p>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5>Calibration Logs</h5>
+                        <div id="calibration-logs" class="logs-container">
+                            <div class="text-muted">No calibration logs yet</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Tab -->
+<div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-camera"></i> Camera Settings
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="left-camera-index" class="form-label">Left Camera Index</label>
+                            <input type="number" class="form-control" id="left-camera-index" min="0" value="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="right-camera-index" class="form-label">Right Camera Index</label>
+                            <input type="number" class="form-control" id="right-camera-index" min="0" value="1">
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="camera-width" class="form-label">Resolution Width</label>
+                            <input type="number" class="form-control" id="camera-width" min="320" step="8" value="640">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="camera-height" class="form-label">Resolution Height</label>
+                            <input type="number" class="form-control" id="camera-height" min="240" step="8" value="480">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" id="update-camera-settings-btn">
+                        <i class="fas fa-save"></i> Update Camera Settings
+                    </button>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <i class="fas fa-project-diagram"></i> Disparity Settings
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="window-size" class="form-label">Window Size</label>
+                            <select class="form-select" id="window-size">
+                                <option value="3">3x3</option>
+                                <option value="5">5x5</option>
+                                <option value="7">7x7</option>
+                                <option value="9">9x9</option>
+                                <option value="11" selected>11x11</option>
+                                <option value="15">15x15</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="num-disparities" class="form-label">Number of Disparities</label>
+                            <input type="number" class="form-control" id="num-disparities" min="16" step="16"
+                                   value="128">
+                            <small class="form-text text-muted">Must be a multiple of 16</small>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="uniqueness-ratio" class="form-label">Uniqueness Ratio</label>
+                            <input type="range" class="form-range" id="uniqueness-ratio" min="5" max="25" value="15">
+                            <span id="uniqueness-ratio-value">15</span>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="speckle-window-size" class="form-label">Speckle Window Size</label>
+                            <input type="range" class="form-range" id="speckle-window-size" min="0" max="200"
+                                   value="100">
+                            <span id="speckle-window-size-value">100</span>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" id="update-disparity-settings-btn">
+                        <i class="fas fa-save"></i> Update Disparity Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <!-- System Information Card -->
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-microchip"></i> System Information
+                </div>
+                <div class="card-body">
+                    <div id="system-info">
+                        <div class="d-flex justify-content-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary mt-3" id="refresh-system-info-btn">
+                        <i class="fas fa-sync"></i> Refresh Information
+                    </button>
+                </div>
+            </div>
+
+            <!-- Available Cameras Card -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <i class="fas fa-video"></i> Available Cameras
+                </div>
+                <div class="card-body">
+                    <div id="available-cameras">
+                        <div class="d-flex justify-content-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary mt-3" id="detect-cameras-btn">
+                        <i class="fas fa-search"></i> Detect Cameras
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block additional_js %}
 <!-- Tab-specific scripts -->
-<script src="{{ url_for('static', filename='js/modules/dashboard.js') }}"></script>
-<script src="{{ url_for('static', filename='js/modules/calibration.js') }}"></script>
-<script src="{{ url_for('static', filename='js/modules/mapping.js') }}"></script>
-<script src="{{ url_for('static', filename='js/modules/navigation.js') }}"></script>
-<script src="{{ url_for('static', filename='js/modules/code_editor.js') }}"></script>
-<script src="{{ url_for('static', filename='js/modules/logs.js') }}"></script>
-<script src="{{ url_for('static', filename='js/modules/settings.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/calibration.js') }}"></script>
+<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
 {% endblock %}

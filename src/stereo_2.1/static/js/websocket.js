@@ -10,8 +10,12 @@ function connectWebSocket() {
     const host = window.location.hostname;
     const port = window.location.port;
 
-    // Create Socket.IO connection
-    socket = io(`http://${host}:${port}`);
+    // Create Socket.IO connection with reconnection options
+    socket = io(`http://${host}:${port}`, {
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
+    });
 
     // Socket.IO event handlers
     setupSocketEvents();
@@ -29,6 +33,25 @@ function setupSocketEvents() {
         isConnected = false;
         updateConnectionStatus(false);
         addToActivityLog('Disconnected from server');
+    });
+
+    socket.on('reconnect_attempt', function(attemptNumber) {
+        console.log(`Reconnection attempt: ${attemptNumber}`);
+        updateConnectionStatus(false, `Reconnecting (${attemptNumber})...`);
+    });
+
+    socket.on('reconnect', function() {
+        console.log('Reconnected to server');
+        updateConnectionStatus(true);
+
+        // Synchronize state after reconnection
+        syncStateAfterReconnect();
+    });
+
+    socket.on('reconnect_failed', function() {
+        console.log('Failed to reconnect');
+        updateConnectionStatus(false, 'Reconnection failed');
+        showToast('Error', 'Failed to reconnect to server', 'danger');
     });
 
     socket.on('frames', function(data) {
@@ -50,13 +73,15 @@ function setupSocketEvents() {
         }
     });
 
-    socket.on('calibration_capture', function(data) {
-        handleCalibrationCapture(data);
+    socket.on('calibration_complete', function(data) {
+        if (typeof handleCalibrationComplete === 'function') {
+            handleCalibrationComplete(data);
+        }
     });
 }
 
 // Update connection status indicator
-function updateConnectionStatus(isConnected) {
+function updateConnectionStatus(isConnected, message = null) {
     const statusIndicator = document.getElementById('status-indicator');
     const statusText = document.getElementById('status-text');
 
@@ -69,7 +94,7 @@ function updateConnectionStatus(isConnected) {
     } else {
         statusIndicator.classList.remove('status-online');
         statusIndicator.classList.add('status-offline');
-        statusText.textContent = 'Disconnected';
+        statusText.textContent = message || 'Disconnected';
     }
 }
 
@@ -95,59 +120,58 @@ function updateCameraFeeds(data) {
         }
     }
 
-    // Extract FPS from the frame if available (displayed on the image)
-    // This is just a placeholder - actual FPS would be extracted differently
-    const streamFps = document.getElementById('stream-fps');
-    if (streamFps) {
-        streamFps.textContent = 'Streaming';
+    // Update camera status indicators
+    const leftCameraStatus = document.getElementById('left-camera-status');
+    const rightCameraStatus = document.getElementById('right-camera-status');
+
+    if (leftCameraStatus) {
+        leftCameraStatus.textContent = data.left ? 'Connected' : 'Not connected';
+        leftCameraStatus.className = data.left ? 'text-success' : 'text-danger';
+    }
+
+    if (rightCameraStatus) {
+        rightCameraStatus.textContent = data.right ? 'Connected' : 'Not connected';
+        rightCameraStatus.className = data.right ? 'text-success' : 'text-danger';
     }
 }
 
-// Handle calibration capture events
-function handleCalibrationCapture(data) {
-    if (data.success) {
-        // Handle auto-capture event from server
-        if (data.auto_captured) {
-            const message = `Auto-captured frame pair ${data.pair_count}/${data.needed_pairs}`;
-            addToActivityLog(message);
+// Synchronize state after reconnection
+function syncStateAfterReconnect() {
+    // Check if streaming was active
+    const streamBtn = document.getElementById('start-stream-btn');
+    const stopBtn = document.getElementById('stop-stream-btn');
 
-            if (typeof addToCalibrationLog === 'function') {
-                addToCalibrationLog(message);
-                addToCalibrationLog(`Saved to ${data.left_path} and ${data.right_path}`);
-            }
-
-            // Update list and progress if functions exist
-            if (typeof addCalibrationPair === 'function') {
-                addCalibrationPair(data.timestamp, data.left_path, data.right_path);
-            }
-
-            // Update progress bar
-            updateCalibrationProgress(data);
-        }
+    if (streamBtn && streamBtn.disabled && stopBtn && !stopBtn.disabled) {
+        // We were streaming, restart it
+        fetch('/api/stream/start', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    showToast('Warning', 'Failed to restart stream after reconnection', 'warning');
+                }
+            })
+            .catch(error => {
+                console.error('Error restarting stream:', error);
+            });
     }
-}
 
-// Update calibration progress indicators
-function updateCalibrationProgress(data) {
-    const progressBar = document.getElementById('captured-progress');
-    const pairsCount = document.getElementById('captured-pairs-count');
+    // Check current tab to refresh its data
+    const activeTabId = document.querySelector('.nav-link.active')?.id;
 
-    if (!progressBar || !pairsCount) return;
-
-    if (data.pair_count !== undefined && data.needed_pairs !== undefined) {
-        pairsCount.textContent = data.pair_count + '/' + data.needed_pairs;
-
-        const progress = Math.min((data.pair_count / data.needed_pairs) * 100, 100);
-        progressBar.style.width = `${progress}%`;
-        progressBar.setAttribute('aria-valuenow', progress);
-
-        if (data.pair_count >= data.needed_pairs) {
-            progressBar.classList.add('bg-success');
-
-            if (typeof addToCalibrationLog === 'function') {
-                addToCalibrationLog(`You now have enough image pairs. Ready to process calibration.`);
-            }
+    if (activeTabId === 'dashboard-tab') {
+        // Check calibration status for dashboard
+        if (typeof checkCalibrationStatus === 'function') {
+            checkCalibrationStatus();
         }
+    } else if (activeTabId === 'settings-tab') {
+        // Reload settings
+        if (typeof loadCurrentSettings === 'function') {
+            window.settingsLoaded = false;
+            loadCurrentSettings();
+        }
+    } else if (activeTabId === 'calibration-tab') {
+        // Check calibration status
+        fetch('/api/calibrate/status');
     }
 }
 
