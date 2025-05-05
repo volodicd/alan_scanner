@@ -1,0 +1,23 @@
+# Core Flask
+flask==2.0.1
+Werkzeug==2.0.1
+
+# SocketIO with threading mode
+flask-socketio==5.1.1
+python-engineio==4.2.1
+python-socketio==5.4.0
+simple-websocket==0.4.0
+
+# Image processing
+opencv-python
+numpy
+
+# Deep learning for stereo vision
+torch==1.13.0  # Compatible with M1 Mac
+torchvision==0.14.0
+timm==0.6.12   # For transformer components
+einops==0.6.0  # For tensor manipulations
+gdown==4.6.0   # For downloading model weights
+matplotlib     # For visualization in RAFT-Stereo
+
+# Do NOT install eventlet - use threading mode instead

@@ -24,7 +24,7 @@ from stereo_vision import StereoVision
 # Configure logging with more detailed format and DEBUG level
 logging.basicConfig(
     level=logging.DEBUG,  # Set to DEBUG for more detailed logs
-    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
+    format='%(ascti±§me)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
     handlers=[
         # Rotating file handler to prevent log files from growing too large
         logging.handlers.RotatingFileHandler(
@@ -1764,6 +1764,7 @@ def serve_static(path):
     return send_from_directory('static', path)
 
 
+
 # Run the application
 if __name__ == '__main__':
     # Make sure the stereo_vision.py file exists
@@ -1776,5 +1777,6 @@ if __name__ == '__main__':
     hostname = socket.gethostname()
 #    ip = socket.gethostbyname(hostname)
     logger.info("Starting Stereo Vision Web Interface")
+    
    # logger.info(f"Running on http://{ip}:8080")
     socketio.run(app, host='0.0.0.0', port=8080, debug=True)

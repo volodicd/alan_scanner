@@ -1,0 +1,104 @@
+2025-04-09 17:17:06,554 - config - ERROR - [app.py:36] - stereo_vision.py not found
+2025-04-09 17:17:10,632 - config - ERROR - [app.py:36] - stereo_vision.py not found
+2025-04-09 17:17:25,315 - config - INFO - [app.py:42] - Starting Stereo Vision Web Interface
+2025-04-09 17:17:25,316 - werkzeug - WARNING - [_internal.py:225] -  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-09 17:17:25,584 - config - INFO - [app.py:42] - Starting Stereo Vision Web Interface
+2025-04-09 17:17:25,584 - werkzeug - WARNING - [_internal.py:225] -  * Debugger is active!
+2025-04-09 17:18:14,528 - config - INFO - [stream_service.py:40] - Starting stream in idle mode
+2025-04-09 17:18:14,529 - stereo_vision - INFO - [stereo_vision.py:61] - Opening cameras (Left: 0, Right: 1)
+2025-04-09 17:18:16,147 - stereo_vision - INFO - [stereo_vision.py:70] - Setting camera resolution to 640x480
+2025-04-09 17:18:17,439 - stereo_vision - INFO - [stereo_vision.py:77] - Allowing cameras to warm up for 1 second
+2025-04-09 17:18:18,443 - stereo_vision - INFO - [stereo_vision.py:79] - Cameras initialized successfully
+2025-04-09 17:18:18,962 - config - INFO - [stream_service.py:167] - Streaming stopped
+2025-04-09 17:18:39,911 - config - INFO - [app.py:42] - Starting Stereo Vision Web Interface
+2025-04-09 17:18:39,912 - werkzeug - WARNING - [_internal.py:225] -  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-09 17:18:40,184 - config - INFO - [app.py:42] - Starting Stereo Vision Web Interface
+2025-04-09 17:18:40,185 - werkzeug - WARNING - [_internal.py:225] -  * Debugger is active!
+2025-04-09 17:18:46,789 - config - INFO - [stream_service.py:40] - Starting stream in idle mode
+2025-04-09 17:18:46,790 - stereo_vision - INFO - [stereo_vision.py:61] - Opening cameras (Left: 0, Right: 1)
+2025-04-09 17:18:48,013 - stereo_vision - INFO - [stereo_vision.py:70] - Setting camera resolution to 640x480
+2025-04-09 17:18:49,339 - stereo_vision - INFO - [stereo_vision.py:77] - Allowing cameras to warm up for 1 second
+2025-04-09 17:18:50,341 - stereo_vision - INFO - [stereo_vision.py:79] - Cameras initialized successfully
+2025-04-09 17:18:50,871 - config - INFO - [stream_service.py:167] - Streaming stopped
+2025-04-09 17:18:56,790 - config - INFO - [stream_service.py:40] - Starting stream in idle mode
+2025-04-09 17:18:56,791 - stereo_vision - INFO - [stereo_vision.py:61] - Opening cameras (Left: 0, Right: 1)
+2025-04-09 17:18:57,852 - stereo_vision - INFO - [stereo_vision.py:70] - Setting camera resolution to 640x480
+2025-04-09 17:18:59,176 - stereo_vision - INFO - [stereo_vision.py:77] - Allowing cameras to warm up for 1 second
+2025-04-09 17:19:00,178 - stereo_vision - INFO - [stereo_vision.py:79] - Cameras initialized successfully
+2025-04-09 17:19:00,675 - config - INFO - [stream_service.py:167] - Streaming stopped
+2025-04-09 17:19:03,974 - config - INFO - [calibration_routes.py:31] - Auto-capture mode set to: enabled
+2025-04-09 17:19:03,974 - config - INFO - [calibration_routes.py:44] - Stability threshold set to 3.0 seconds
+2025-04-09 17:19:25,716 - config - INFO - [app.py:42] - Starting Stereo Vision Web Interface
+2025-04-09 17:19:25,717 - werkzeug - WARNING - [_internal.py:225] -  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-09 17:19:26,032 - config - INFO - [app.py:42] - Starting Stereo Vision Web Interface
+2025-04-09 17:19:26,033 - werkzeug - WARNING - [_internal.py:225] -  * Debugger is active!
+2025-04-09 17:19:31,014 - config - INFO - [stream_service.py:40] - Starting stream in idle mode
+2025-04-09 17:19:31,015 - stereo_vision - INFO - [stereo_vision.py:61] - Opening cameras (Left: 0, Right: 1)
+2025-04-09 17:19:32,368 - stereo_vision - INFO - [stereo_vision.py:70] - Setting camera resolution to 640x480
+2025-04-09 17:19:33,663 - stereo_vision - INFO - [stereo_vision.py:77] - Allowing cameras to warm up for 1 second
+2025-04-09 17:19:34,668 - stereo_vision - INFO - [stereo_vision.py:79] - Cameras initialized successfully
+2025-04-09 17:19:35,185 - config - INFO - [stream_service.py:167] - Streaming stopped
+2025-04-09 17:19:42,859 - config - INFO - [app.py:42] - Starting Stereo Vision Web Interface
+2025-04-09 17:19:42,859 - werkzeug - WARNING - [_internal.py:225] -  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-09 17:19:43,120 - config - INFO - [app.py:42] - Starting Stereo Vision Web Interface
+2025-04-09 17:19:43,120 - werkzeug - WARNING - [_internal.py:225] -  * Debugger is active!
+2025-04-09 17:27:28,904 - config - INFO - [app.py:42] - Starting Stereo Vision Web Interface
+2025-04-09 17:27:28,905 - werkzeug - WARNING - [_internal.py:225] -  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-09 17:27:29,170 - config - INFO - [app.py:42] - Starting Stereo Vision Web Interface
+2025-04-09 17:27:29,170 - werkzeug - WARNING - [_internal.py:225] -  * Debugger is active!
+2025-04-09 17:27:39,382 - config - INFO - [stream_service.py:40] - Starting stream in idle mode
+2025-04-09 17:27:39,382 - stereo_vision - INFO - [stereo_vision.py:61] - Opening cameras (Left: 0, Right: 1)
+2025-04-09 17:27:40,798 - stereo_vision - INFO - [stereo_vision.py:70] - Setting camera resolution to 640x480
+2025-04-09 17:27:42,086 - stereo_vision - INFO - [stereo_vision.py:77] - Allowing cameras to warm up for 1 second
+2025-04-09 17:27:43,091 - stereo_vision - INFO - [stereo_vision.py:79] - Cameras initialized successfully
+2025-04-09 17:27:43,650 - config - INFO - [stream_service.py:167] - Streaming stopped
+2025-04-09 17:30:04,445 - config - INFO - [app.py:42] - Starting Stereo Vision Web Interface
+2025-04-09 17:30:04,445 - werkzeug - WARNING - [_internal.py:225] -  * Debugger is active!
+2025-04-09 17:30:25,219 - config - INFO - [app.py:46] - Starting Stereo Vision Web Interface
+2025-04-09 17:30:25,220 - werkzeug - WARNING - [_internal.py:225] -  * Debugger is active!
+2025-04-09 17:31:11,437 - config - INFO - [app.py:46] - Starting Stereo Vision Web Interface
+2025-04-09 17:31:11,437 - werkzeug - WARNING - [_internal.py:225] -  * Debugger is active!
+2025-04-09 17:31:13,309 - config - INFO - [app.py:46] - Starting Stereo Vision Web Interface
+2025-04-09 17:31:13,309 - werkzeug - WARNING - [_internal.py:225] -  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-09 17:31:13,575 - config - INFO - [app.py:46] - Starting Stereo Vision Web Interface
+2025-04-09 17:31:13,575 - werkzeug - WARNING - [_internal.py:225] -  * Debugger is active!
+2025-04-09 17:31:19,484 - config - INFO - [stream_service.py:39] - Starting stream in idle mode
+2025-04-09 17:31:19,484 - stereo_vision - INFO - [stereo_vision.py:61] - Opening cameras (Left: 0, Right: 1)
+2025-04-09 17:31:21,064 - stereo_vision - INFO - [stereo_vision.py:70] - Setting camera resolution to 640x480
+2025-04-09 17:31:22,389 - stereo_vision - INFO - [stereo_vision.py:77] - Allowing cameras to warm up for 1 second
+2025-04-09 17:31:23,395 - stereo_vision - INFO - [stereo_vision.py:79] - Cameras initialized successfully
+2025-04-09 17:31:23,914 - config - INFO - [stream_service.py:166] - Streaming stopped
+2025-04-09 17:31:50,077 - config - INFO - [app.py:46] - Starting Stereo Vision Web Interface
+2025-04-09 17:31:50,077 - werkzeug - WARNING - [_internal.py:225] -  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-09 17:31:50,472 - config - INFO - [app.py:46] - Starting Stereo Vision Web Interface
+2025-04-09 17:31:50,473 - werkzeug - WARNING - [_internal.py:225] -  * Debugger is active!
+2025-04-09 17:31:54,038 - config - INFO - [stream_service.py:39] - Starting stream in idle mode
+2025-04-09 17:31:54,039 - config - INFO - [stream_service.py:39] - Starting stream in idle mode
+2025-04-09 17:31:54,039 - stereo_vision - INFO - [stereo_vision.py:61] - Opening cameras (Left: 0, Right: 1)
+2025-04-09 17:31:54,039 - stereo_vision - INFO - [stereo_vision.py:61] - Opening cameras (Left: 0, Right: 1)
+2025-04-09 17:31:55,374 - stereo_vision - INFO - [stereo_vision.py:70] - Setting camera resolution to 640x480
+2025-04-09 17:31:55,375 - stereo_vision - INFO - [stereo_vision.py:70] - Setting camera resolution to 640x480
+2025-04-09 17:31:56,388 - stereo_vision - INFO - [stereo_vision.py:77] - Allowing cameras to warm up for 1 second
+2025-04-09 17:31:56,390 - stereo_vision - INFO - [stereo_vision.py:77] - Allowing cameras to warm up for 1 second
+2025-04-09 17:31:57,393 - stereo_vision - INFO - [stereo_vision.py:79] - Cameras initialized successfully
+2025-04-09 17:31:57,395 - stereo_vision - INFO - [stereo_vision.py:79] - Cameras initialized successfully
+2025-04-09 17:31:57,871 - config - INFO - [stream_service.py:166] - Streaming stopped
+2025-04-09 17:31:57,913 - config - INFO - [stream_service.py:166] - Streaming stopped
+2025-04-09 17:34:04,967 - config - INFO - [app.py:45] - Starting Stereo Vision Web Interface
+2025-04-09 17:34:04,968 - werkzeug - WARNING - [_internal.py:225] -  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-09 17:34:05,238 - config - INFO - [app.py:45] - Starting Stereo Vision Web Interface
+2025-04-09 17:34:05,238 - werkzeug - WARNING - [_internal.py:225] -  * Debugger is active!
+2025-04-09 17:34:21,798 - config - INFO - [stream_service.py:39] - Starting stream in idle mode
+2025-04-09 17:34:21,799 - stereo_vision - INFO - [stereo_vision.py:61] - Opening cameras (Left: 0, Right: 1)
+2025-04-09 17:34:23,169 - stereo_vision - INFO - [stereo_vision.py:70] - Setting camera resolution to 640x480
+2025-04-09 17:34:24,457 - stereo_vision - INFO - [stereo_vision.py:77] - Allowing cameras to warm up for 1 second
+2025-04-09 17:34:25,460 - stereo_vision - INFO - [stereo_vision.py:79] - Cameras initialized successfully
+2025-04-09 17:34:25,972 - config - INFO - [stream_service.py:166] - Streaming stopped
