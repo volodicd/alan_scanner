@@ -1,20 +1,19 @@
 # routes/calibration_routes.py
 from flask import request, jsonify
 import threading
-import time
 import os
 import cv2
 import base64
 import numpy as np
-from datetime import datetime
 from stereo_vision import StereoVision
-
-from config import (
-    stereo_vision, is_streaming, calibration_state, current_config, logger
-)
+from config import current_config, logger
 from utils import emit
 
+# Thread safety
+# So, basically it is a lock for a global vars, so they would be locked during the calibration
+thread_lock = threading.Lock()
 calibration_in_progress = False
+
 
 def register_calibration_routes(app):
     """Register calibration-related routes."""
@@ -22,9 +21,13 @@ def register_calibration_routes(app):
     @app.route('/api/calibrate/start', methods=['POST'])
     def start_calibration():
         global stereo_vision, is_streaming, calibration_state, calibration_in_progress
-        if calibration_in_progress:
-            return jsonify({'success': False, 'message': 'Calibration already in progress'}), 409
-        calibration_in_progress = True
+
+        with thread_lock:
+            # Checking for double calibration
+            if calibration_in_progress:
+                return jsonify({'success': False, 'message': 'Calibration already in progress'}), 409
+            calibration_in_progress = True
+
         # Process request parameters
         try:
             data = request.json or {}
@@ -35,9 +38,9 @@ def register_calibration_routes(app):
                 logger.info("Auto-capture mode set to: %s", "enabled" if current_config["auto_capture"] else "disabled")
 
             # Set stability threshold if provided
+            # Wont recomend to set less than 1 second, even manually. Will lead to very poor calibration. 0.5 s only for testing.
             if 'stability_seconds' in data:
                 stability = float(data['stability_seconds'])
-                # Validate stability threshold
                 if stability < 0.5:
                     stability = 0.5
                     logger.warning("Stability threshold too low, setting to minimum 0.5 seconds")
@@ -47,7 +50,7 @@ def register_calibration_routes(app):
                 current_config["stability_seconds"] = stability
                 logger.info("Stability threshold set to %.1f seconds", stability)
 
-            # Set checkerboard size if provided
+            # Is is also possible to set other methods of callibration here
             if 'checkerboard_size' in data and isinstance(data['checkerboard_size'], list) and len(
                     data['checkerboard_size']) == 2:
                 current_config["calibration_checkerboard_size"] = tuple(data['checkerboard_size'])
@@ -55,7 +58,7 @@ def register_calibration_routes(app):
                             current_config["calibration_checkerboard_size"][0],
                             current_config["calibration_checkerboard_size"][1])
 
-            # Set square size if provided
+            # Not really important(from practical exp)
             if 'square_size' in data:
                 try:
                     square_size = float(data['square_size'])
@@ -67,22 +70,21 @@ def register_calibration_routes(app):
         except Exception as e:
             logger.warning("Error processing calibration parameters: %s", str(e))
 
-        # Stop any existing stream
-        global is_streaming
-        if is_streaming:
-            is_streaming = False
+        # Lock for calibration state
+        with thread_lock:
+            global is_streaming
+            was_streaming = is_streaming
+            if is_streaming:
+                is_streaming = False
 
-        # Initialize stereo vision if needed
+        # Init camera if stream is off
         if stereo_vision is None:
-
             stereo_vision = StereoVision(
                 left_cam_idx=current_config["left_cam_idx"],
                 right_cam_idx=current_config["right_cam_idx"],
                 width=current_config["width"],
                 height=current_config["height"]
             )
-
-        # Reset calibration state
         reset_calibration_state()
 
         # Start calibration process in a separate thread
@@ -113,6 +115,8 @@ def register_calibration_routes(app):
 
         except Exception as e:
             logger.error("Failed to start calibration: %s", str(e))
+            with thread_lock:
+                calibration_in_progress = False
             return jsonify({'success': False, 'message': str(e)}), 500
 
     @app.route('/api/calibrate/settings', methods=['GET', 'POST'])
@@ -280,14 +284,15 @@ def register_calibration_routes(app):
 
 def reset_calibration_state():
     """Reset the calibration state to default values."""
-    calibration_state.update({
-        "is_stable": False,
-        "stable_since": 0,
-        "last_capture_time": 0,
-        "captured_pairs": 0,
-        "min_pairs_needed": 10,
-        "recommended_pairs": 20
-    })
+    with thread_lock:
+        calibration_state.update({
+            "is_stable": False,
+            "stable_since": 0,
+            "last_capture_time": 0,
+            "captured_pairs": 0,
+            "min_pairs_needed": 10,
+            "recommended_pairs": 20
+        })
 
 
 def run_calibration(checkerboard_size, square_size, auto_capture, stability_seconds):
@@ -296,6 +301,8 @@ def run_calibration(checkerboard_size, square_size, auto_capture, stability_seco
 
     if stereo_vision is None:
         emit('error', {'message': 'Stereo vision not initialized'})
+        with thread_lock:
+            calibration_in_progress = False
         return
 
     logger.info("Starting calibration process")
@@ -332,4 +339,5 @@ def run_calibration(checkerboard_size, square_size, auto_capture, stability_seco
         emit('error', {'message': f'Error during calibration: {str(e)}'})
         emit('calibration_complete', {'success': False, 'error': str(e)})
     finally:
-        calibration_in_progress = False
+        with thread_lock:
+            calibration_in_progress = False

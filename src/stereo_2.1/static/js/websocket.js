@@ -3,6 +3,7 @@
 // Socket.IO connection instance
 let socket;
 let isConnected = false;
+let eventHandlers = {};
 
 // Initialize WebSocket connection
 function connectWebSocket() {
@@ -21,63 +22,98 @@ function connectWebSocket() {
     setupSocketEvents();
 }
 
+// Clean up socket event handlers
+function cleanupSocketEvents() {
+    if (socket) {
+        for (const event in eventHandlers) {
+            if (eventHandlers.hasOwnProperty(event)) {
+                socket.off(event, eventHandlers[event]);
+            }
+        }
+        eventHandlers = {};
+    }
+}
+
 // Set up socket event listeners
 function setupSocketEvents() {
-    socket.on('connect', function() {
+    // Clean up any existing handlers first
+    cleanupSocketEvents();
+
+    // Connect event
+    eventHandlers.connect = function() {
         isConnected = true;
         updateConnectionStatus(true);
         addToActivityLog('Connected to server');
-    });
+    };
+    socket.on('connect', eventHandlers.connect);
 
-    socket.on('disconnect', function() {
+    // Disconnect event
+    eventHandlers.disconnect = function() {
         isConnected = false;
         updateConnectionStatus(false);
         addToActivityLog('Disconnected from server');
-    });
+    };
+    socket.on('disconnect', eventHandlers.disconnect);
 
-    socket.on('reconnect_attempt', function(attemptNumber) {
+    // Reconnect attempt event
+    eventHandlers.reconnect_attempt = function(attemptNumber) {
         console.log(`Reconnection attempt: ${attemptNumber}`);
         updateConnectionStatus(false, `Reconnecting (${attemptNumber})...`);
-    });
+    };
+    socket.on('reconnect_attempt', eventHandlers.reconnect_attempt);
 
-    socket.on('reconnect', function() {
+    // Reconnect event
+    eventHandlers.reconnect = function() {
         console.log('Reconnected to server');
         updateConnectionStatus(true);
 
         // Synchronize state after reconnection
         syncStateAfterReconnect();
-    });
+    };
+    socket.on('reconnect', eventHandlers.reconnect);
 
-    socket.on('reconnect_failed', function() {
+    // Reconnect failed event
+    eventHandlers.reconnect_failed = function() {
         console.log('Failed to reconnect');
         updateConnectionStatus(false, 'Reconnection failed');
         showToast('Error', 'Failed to reconnect to server', 'danger');
-    });
+    };
+    socket.on('reconnect_failed', eventHandlers.reconnect_failed);
 
-    socket.on('frames', function(data) {
+    // Frames event
+    eventHandlers.frames = function(data) {
         updateCameraFeeds(data);
-    });
+    };
+    socket.on('frames', eventHandlers.frames);
 
-    socket.on('error', function(data) {
+    // Error event
+    eventHandlers.error = function(data) {
         showToast('Error', data.message, 'danger');
         addToActivityLog('Error: ' + data.message);
-    });
+    };
+    socket.on('error', eventHandlers.error);
 
-    socket.on('status', function(data) {
+    // Status event
+    eventHandlers.status = function(data) {
         addToActivityLog(data.message);
-    });
+    };
+    socket.on('status', eventHandlers.status);
 
-    socket.on('calibration_status', function(data) {
+    // Calibration status event
+    eventHandlers.calibration_status = function(data) {
         if (typeof updateCalibrationStatus === 'function') {
             updateCalibrationStatus(data);
         }
-    });
+    };
+    socket.on('calibration_status', eventHandlers.calibration_status);
 
-    socket.on('calibration_complete', function(data) {
+    // Calibration complete event
+    eventHandlers.calibration_complete = function(data) {
         if (typeof handleCalibrationComplete === 'function') {
             handleCalibrationComplete(data);
         }
-    });
+    };
+    socket.on('calibration_complete', eventHandlers.calibration_complete);
 }
 
 // Update connection status indicator
@@ -117,6 +153,14 @@ function updateCameraFeeds(data) {
         const disparityMap = document.getElementById('disparity-map');
         if (disparityMap) {
             disparityMap.src = 'data:image/jpeg;base64,' + data.disparity;
+        }
+    }
+
+    // Update FPS counter if provided
+    if (data.fps !== undefined) {
+        const fpsElement = document.getElementById('stream-fps');
+        if (fpsElement) {
+            fpsElement.textContent = data.fps;
         }
     }
 
@@ -174,6 +218,11 @@ function syncStateAfterReconnect() {
         fetch('/api/calibrate/status');
     }
 }
+
+// Clean up when window/document is unloaded
+window.addEventListener('beforeunload', function() {
+    cleanupSocketEvents();
+});
 
 // Trigger connection when document is ready
 document.addEventListener('DOMContentLoaded', connectWebSocket);

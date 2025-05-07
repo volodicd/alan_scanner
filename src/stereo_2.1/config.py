@@ -1,5 +1,4 @@
 import os
-import logging
 import logging.handlers
 
 # Make sure necessary directories exist
@@ -36,10 +35,10 @@ current_config = {
     "right_cam_idx": 1,
     "width": 640,
     "height": 480,
-    "calibration_checkerboard_size": (7, 6),
-    "calibration_square_size": 0.025,
+    "calibration_checkerboard_size": (11, 12),
+    "calibration_square_size": 0.004,
     "auto_capture": True,
-    "stability_seconds": 3.0,
+    "stability_seconds": 1.0, #better not to set less than 1s
     "sgbm_params": {
         "window_size": 11,
         "min_disp": 0,

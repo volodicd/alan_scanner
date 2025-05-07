@@ -6,6 +6,7 @@ import threading
 import time
 import os
 from datetime import datetime
+from collections import deque
 
 from config import (
     stereo_vision, is_streaming, current_config, logger
@@ -16,6 +17,14 @@ from utils import emit
 stream_thread = None
 stream_thread_active = False  # Track if the thread should continue running
 
+# Thread safety lock
+thread_lock = threading.Lock()
+
+# For FPS calculation
+frame_times = deque(maxlen=30)  # Store last 30 frame timestamps
+last_fps_update = 0
+current_fps = 0
+
 
 def register_camera_routes(app):
     """Register camera-related routes."""
@@ -24,33 +33,34 @@ def register_camera_routes(app):
     def start_stream():
         global is_streaming, stream_thread, stream_thread_active, stereo_vision
 
-        # Check if thread is still running from previous session
-        if stream_thread is not None and stream_thread.is_alive():
-            # Stop previous thread
-            is_streaming = False
-            stream_thread_active = False
-            # Wait for thread to finish
-            stream_thread.join(timeout=2.0)
+        with thread_lock:
+            # Check if thread is still running from previous session
+            if stream_thread is not None and stream_thread.is_alive():
+                # Stop previous thread
+                is_streaming = False
+                stream_thread_active = False
+                # Wait for thread to finish
+                stream_thread.join(timeout=2.0)
 
-        if is_streaming:
-            return jsonify({'success': False, 'message': 'Stream is already running'})
+            if is_streaming:
+                return jsonify({'success': False, 'message': 'Stream is already running'})
 
-        # Initialize stereo vision if needed
-        if stereo_vision is None:
-            from stereo_vision import StereoVision
-            stereo_vision = StereoVision(
-                left_cam_idx=current_config["left_cam_idx"],
-                right_cam_idx=current_config["right_cam_idx"],
-                width=current_config["width"],
-                height=current_config["height"]
-            )
+            # Initialize stereo vision if needed
+            if stereo_vision is None:
+                from stereo_vision import StereoVision
+                stereo_vision = StereoVision(
+                    left_cam_idx=current_config["left_cam_idx"],
+                    right_cam_idx=current_config["right_cam_idx"],
+                    width=current_config["width"],
+                    height=current_config["height"]
+                )
 
-        # Start streaming thread
-        is_streaming = True
-        stream_thread_active = True
-        stream_thread = threading.Thread(target=process_stream)
-        stream_thread.daemon = True
-        stream_thread.start()
+            # Start streaming thread
+            is_streaming = True
+            stream_thread_active = True
+            stream_thread = threading.Thread(target=process_stream)
+            stream_thread.daemon = True
+            stream_thread.start()
 
         return jsonify({'success': True})
 
@@ -58,16 +68,19 @@ def register_camera_routes(app):
     def stop_stream():
         global is_streaming, stream_thread, stream_thread_active
 
-        if not is_streaming:
-            return jsonify({'success': False, 'message': 'Stream is not running'})
+        with thread_lock:
+            if not is_streaming:
+                return jsonify({'success': False, 'message': 'Stream is not running'})
 
-        # Set flags to stop streaming
-        is_streaming = False
-        stream_thread_active = False
+            # Set flags to stop streaming
+            is_streaming = False
+            stream_thread_active = False
 
-        # Wait for thread to finish
-        if stream_thread is not None and stream_thread.is_alive():
-            stream_thread.join(timeout=2.0)
+            # Wait for thread to finish
+            if stream_thread is not None and stream_thread.is_alive():
+                stream_thread.join(timeout=5.0)
+                if stream_thread.is_alive():
+                    logger.warning("Stream thread did not terminate within timeout")
 
         return jsonify({'success': True})
 
@@ -122,15 +135,32 @@ def register_camera_routes(app):
             return jsonify({'success': False, 'message': str(e)}), 500
 
 
+def calculate_fps():
+    """Calculate the current FPS based on stored frame times."""
+    global frame_times, current_fps
+
+    if len(frame_times) < 2:
+        return 0.0
+
+    # Calculate time difference between oldest and newest frame
+    time_diff = frame_times[-1] - frame_times[0]
+    if time_diff <= 0:
+        return 0.0
+
+    # Calculate FPS based on number of frames and time elapsed
+    return (len(frame_times) - 1) / time_diff
+
+
 def process_stream():
     """Process and stream frames from the cameras."""
-    global is_streaming, stereo_vision, stream_thread_active
+    global is_streaming, stereo_vision, stream_thread_active, frame_times, current_fps, last_fps_update
 
     if stereo_vision is None:
         logger.error("Stereo vision not initialized")
         emit('error', {'message': 'Stereo vision not initialized'})
-        is_streaming = False
-        stream_thread_active = False
+        with thread_lock:
+            is_streaming = False
+            stream_thread_active = False
         return
 
     # Open cameras
@@ -139,8 +169,9 @@ def process_stream():
     except Exception as e:
         logger.error(f"Failed to open cameras: {str(e)}")
         emit('error', {'message': f"Failed to open cameras: {str(e)}"})
-        is_streaming = False
-        stream_thread_active = False
+        with thread_lock:
+            is_streaming = False
+            stream_thread_active = False
         return
 
     # Check if calibration is available
@@ -155,10 +186,30 @@ def process_stream():
         logger.error(f"Error loading calibration: {str(e)}")
         emit('error', {'message': f"Calibration error: {str(e)}"})
 
+    # Target frame rate control
+    target_fps = 30
+    frame_time = 1.0 / target_fps
+    last_frame_time = time.time()
+
     # Main streaming loop
     try:
         while is_streaming and stream_thread_active:
+            # Maintain frame rate
+            current_time = time.time()
+            elapsed = current_time - last_frame_time
+            if elapsed < frame_time:
+                time.sleep(frame_time - elapsed)
+
             try:
+                # Record this frame's time for FPS calculation
+                current_time = time.time()
+                frame_times.append(current_time)
+
+                # Update FPS calculation every second
+                if current_time - last_fps_update >= 1.0:
+                    current_fps = calculate_fps()
+                    last_fps_update = current_time
+
                 # Capture frames
                 left_frame, right_frame = stereo_vision.capture_frames()
 
@@ -208,10 +259,13 @@ def process_stream():
 
                 # Send frames via websocket if we have any
                 if encoded_frames:
-                    emit('frames', encoded_frames)
+                    # Add FPS information
+                    data_to_send = encoded_frames.copy()
+                    data_to_send['fps'] = round(current_fps, 1)
+                    emit('frames', data_to_send)
 
-                # Small delay to reduce CPU usage
-                time.sleep(0.05)
+                # Update last frame time
+                last_frame_time = current_time
 
             except Exception as e:
                 logger.error(f"Error in streaming thread: {str(e)}")
@@ -226,6 +280,7 @@ def process_stream():
             logger.error(f"Error closing cameras: {str(e)}")
 
         # Reset flags
-        is_streaming = False
-        stream_thread_active = False
+        with thread_lock:
+            is_streaming = False
+            stream_thread_active = False
         logger.info("Streaming stopped")

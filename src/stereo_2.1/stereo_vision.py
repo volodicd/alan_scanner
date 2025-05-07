@@ -27,7 +27,7 @@ class StereoVision:
         self.left_cam = None
         self.right_cam = None
 
-        # Camera calibration matrices (populated after calibration)
+        # Camera calibration parameter, which will be filled after loading or making calibration
         self.camera_matrix_left = None
         self.dist_coeffs_left = None
         self.camera_matrix_right = None
@@ -39,6 +39,14 @@ class StereoVision:
         self.R2 = None
         self.P1 = None
         self.P2 = None
+
+        # Cached rectification maps
+        # test version, needed to speed up workflw
+        self.mapL1 = None
+        self.mapL2 = None
+        self.mapR1 = None
+        self.mapR2 = None
+        self.maps_initialized = False
 
         # Configuration for SGBM algorithm
         self.sgbm_params = {
@@ -53,22 +61,20 @@ class StereoVision:
     def open_cameras(self):
         """Open and configure both cameras."""
         logger.info("Opening cameras (Left: %d, Right: %d)", self.left_cam_idx, self.right_cam_idx)
+
+        self.close_cameras()
         self.left_cam = cv2.VideoCapture(self.left_cam_idx)
         self.right_cam = cv2.VideoCapture(self.right_cam_idx)
 
         if not self.left_cam.isOpened() or not self.right_cam.isOpened():
             logger.error("Failed to open one or both cameras")
+            self.close_cameras()
             raise RuntimeError("Failed to open one or both cameras.")
-
-        # Set resolution for both cameras
         logger.info("Setting camera resolution to %dx%d", self.width, self.height)
         for cam in [self.left_cam, self.right_cam]:
             cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             cam.set(cv2.CAP_PROP_FPS, 30)
-
-        # Allow cameras to warm up
-        logger.info("Allowing cameras to warm up for 1 second")
         time.sleep(1)
         logger.info("Cameras initialized successfully")
 
@@ -89,7 +95,6 @@ class StereoVision:
 
         ret_left, left_frame = self.left_cam.read()
         ret_right, right_frame = self.right_cam.read()
-
         if not ret_left or not ret_right:
             logger.error("Failed to capture frames from one or both cameras")
             return None, None
@@ -118,10 +123,7 @@ class StereoVision:
         logger.info("Auto-capture: %s, Stability time: %.1f seconds",
                     "enabled" if auto_capture else "disabled", stability_seconds)
 
-        # Termination criteria for corner refinement
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-
-        # Prepare 3D object points
         objp = np.zeros((checkerboard_size[0] * checkerboard_size[1], 3), np.float32)
         objp[:, :2] = np.mgrid[0:checkerboard_size[0], 0:checkerboard_size[1]].T.reshape(-1, 2)
         objp *= square_size  # Scale to real-world units
@@ -150,16 +152,14 @@ class StereoVision:
                 left_gray = cv2.cvtColor(left_frame, cv2.COLOR_BGR2GRAY)
                 right_gray = cv2.cvtColor(right_frame, cv2.COLOR_BGR2GRAY)
 
-                # Apply preprocessing to improve detection
+                # Apply smoothing for better corner detection
                 left_gray = cv2.GaussianBlur(left_gray, (5, 5), 0)
                 right_gray = cv2.GaussianBlur(right_gray, (5, 5), 0)
 
                 # Check for checkerboard
                 pattern_flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
-                found_left, left_corners = cv2.findChessboardCorners(
-                    left_gray, checkerboard_size, pattern_flags)
-                found_right, right_corners = cv2.findChessboardCorners(
-                    right_gray, checkerboard_size, pattern_flags)
+                found_left, left_corners = cv2.findChessboardCorners(left_gray, checkerboard_size, pattern_flags)
+                found_right, right_corners = cv2.findChessboardCorners(right_gray, checkerboard_size, pattern_flags)
 
                 # Track detection for auto-capture
                 current_time = time.time()
@@ -170,8 +170,6 @@ class StereoVision:
                     if not is_stable:
                         stable_since = current_time
                         is_stable = True
-
-                    # Calculate stable duration
                     stable_duration = current_time - stable_since
 
                     # Auto-capture if stable for required duration and enough time has passed since last capture
@@ -180,26 +178,22 @@ class StereoVision:
 
                     if (auto_capture and stable_duration >= stability_seconds and
                             time_since_last_capture > min_capture_interval):
-                        # Process frame
                         logger.info("Auto-capturing after %.1f seconds of stability", stable_duration)
 
                         # Refine corner locations
-                        left_corners = cv2.cornerSubPix(
-                            left_gray, left_corners, (11, 11), (-1, -1), criteria)
-                        right_corners = cv2.cornerSubPix(
-                            right_gray, right_corners, (11, 11), (-1, -1), criteria)
+                        left_corners = cv2.cornerSubPix(left_gray, left_corners, (11, 11), (-1, -1), criteria)
+                        right_corners = cv2.cornerSubPix(right_gray, right_corners, (11, 11), (-1, -1), criteria)
 
-                        # Store points
+                        # For storing points
                         objpoints.append(objp)
                         left_imgpoints.append(left_corners)
                         right_imgpoints.append(right_corners)
 
-                        # Save calibration images
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         left_path = f'static/calibration/left_{timestamp}.jpg'
                         right_path = f'static/calibration/right_{timestamp}.jpg'
 
-                        # Draw corners on the images
+                        # Displaying on the image(comment this part if working slow)
                         left_display = left_frame.copy()
                         right_display = right_frame.copy()
                         cv2.drawChessboardCorners(
@@ -209,7 +203,7 @@ class StereoVision:
 
                         cv2.imwrite(left_path, left_display)
                         cv2.imwrite(right_path, right_display)
-
+                        # stop commenting here if u would prefer speed and displaying is not necessary
                         # Update state
                         frame_count += 1
                         last_capture_time = current_time
@@ -217,10 +211,9 @@ class StereoVision:
 
                         logger.info("Captured calibration frame pair %d/%d", frame_count, needed_frames)
                 else:
-                    # Reset stability tracking
                     is_stable = False
 
-                # Add a small delay
+                # Needed for sync
                 time.sleep(0.05)
 
             if frame_count < 10:
@@ -257,7 +250,9 @@ class StereoVision:
                 flags=cv2.CALIB_ZERO_DISPARITY, alpha=0
             )
 
-            # Save calibration parameters to file
+            # Initialize rectification maps
+            self._init_rectification_maps(image_size)
+
             logger.info("Saving calibration data to file...")
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -332,6 +327,10 @@ class StereoVision:
                     else:
                         setattr(self, param, calibration_data[param].astype(np.float32))
 
+            # Initialize rectification maps
+            if not self.maps_initialized and 'image_size' in calibration_data:
+                self._init_rectification_maps(calibration_data['image_size'])
+
             logger.info("Calibration loaded successfully")
             return True
 
@@ -340,6 +339,34 @@ class StereoVision:
             return False
         except Exception as e:
             logger.error("Error loading calibration: %s", str(e))
+            return False
+
+    def _init_rectification_maps(self, image_size):
+        """Initialize rectification maps for faster processing."""
+        if not all([self.camera_matrix_left, self.dist_coeffs_left,
+                    self.R1, self.P1, self.camera_matrix_right,
+                    self.dist_coeffs_right, self.R2, self.P2]):
+            logger.error("Cannot initialize rectification maps - calibration data incomplete")
+            return False
+
+        try:
+            w, h = image_size
+
+            logger.info("Initializing rectification maps for %dx%d images", w, h)
+
+            self.mapL1, self.mapL2 = cv2.initUndistortRectifyMap(
+                self.camera_matrix_left, self.dist_coeffs_left,
+                self.R1, self.P1, (w, h), cv2.CV_32FC1)
+
+            self.mapR1, self.mapR2 = cv2.initUndistortRectifyMap(
+                self.camera_matrix_right, self.dist_coeffs_right,
+                self.R2, self.P2, (w, h), cv2.CV_32FC1)
+
+            self.maps_initialized = True
+            logger.info("Rectification maps initialized successfully")
+            return True
+        except Exception as e:
+            logger.error("Failed to initialize rectification maps: %s", str(e))
             return False
 
     def compute_disparity_map(self, left_img, right_img):
@@ -394,26 +421,24 @@ class StereoVision:
         """
         Get rectified images using the calibration parameters.
         """
-        if not all([self.camera_matrix_left, self.dist_coeffs_left,
+        if not self.maps_initialized:
+            # If maps not initialized, try to initialize them
+            h, w = left_img.shape[:2]
+            if all([self.camera_matrix_left, self.dist_coeffs_left,
                     self.R1, self.P1, self.camera_matrix_right,
                     self.dist_coeffs_right, self.R2, self.P2]):
-            logger.error("Calibration parameters not loaded")
+                self._init_rectification_maps((w, h))
+            else:
+                logger.error("Calibration parameters not loaded")
+                return left_img, right_img
+
+        if not self.maps_initialized:
+            # If still not initialized, fallback to original images
             return left_img, right_img
 
-        # Create rectification maps
-        h, w = left_img.shape[:2]
-
-        mapL1, mapL2 = cv2.initUndistortRectifyMap(
-            self.camera_matrix_left, self.dist_coeffs_left,
-            self.R1, self.P1, (w, h), cv2.CV_32FC1)
-
-        mapR1, mapR2 = cv2.initUndistortRectifyMap(
-            self.camera_matrix_right, self.dist_coeffs_right,
-            self.R2, self.P2, (w, h), cv2.CV_32FC1)
-
-        # Rectify images
-        left_rect = cv2.remap(left_img, mapL1, mapL2, cv2.INTER_LINEAR)
-        right_rect = cv2.remap(right_img, mapR1, mapR2, cv2.INTER_LINEAR)
+        # Rectify images using cached maps
+        left_rect = cv2.remap(left_img, self.mapL1, self.mapL2, cv2.INTER_LINEAR)
+        right_rect = cv2.remap(right_img, self.mapR1, self.mapR2, cv2.INTER_LINEAR)
 
         return left_rect, right_rect
 
