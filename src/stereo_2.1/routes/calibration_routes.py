@@ -182,6 +182,7 @@ def register_calibration_routes(app):
             except Exception as e:
                 logger.error("Failed to update calibration settings: %s", str(e))
                 return jsonify({'success': False, 'message': str(e)}), 400
+        return None
 
     @app.route('/api/calibrate/status', methods=['GET'])
     def get_calibration_status():
@@ -237,10 +238,8 @@ def register_calibration_routes(app):
             cb_size = current_config["calibration_checkerboard_size"]
             pattern_flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
 
-            found_left, left_corners = cv2.findChessboardCorners(
-                left_gray, cb_size, pattern_flags)
-            found_right, right_corners = cv2.findChessboardCorners(
-                right_gray, cb_size, pattern_flags)
+            found_left, left_corners = cv2.findChessboardCorners(left_gray, cb_size, pattern_flags)
+            found_right, right_corners = cv2.findChessboardCorners(right_gray, cb_size, pattern_flags)
 
             # If found, draw on copies
             left_display = left_frame.copy()

@@ -66,6 +66,7 @@ def register_settings_routes(app):
             except Exception as e:
                 logger.error(f"Error updating config: {str(e)}")
                 return jsonify({'success': False, 'message': str(e)}), 500
+        return None
 
     @app.route('/api/system/info', methods=['GET'])
     def get_system_info():

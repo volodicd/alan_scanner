@@ -38,7 +38,7 @@ current_config = {
     "calibration_checkerboard_size": (11, 12),
     "calibration_square_size": 0.004,
     "auto_capture": True,
-    "stability_seconds": 1.0, #better not to set less than 1s
+    "stability_seconds": 1.0, #better not to set less than 1 s
     "sgbm_params": {
         "window_size": 11,
         "min_disp": 0,

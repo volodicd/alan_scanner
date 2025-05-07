@@ -1,5 +1,5 @@
 # routes/camera_routes.py
-from flask import request, jsonify
+from flask import jsonify
 import cv2
 import base64
 import threading
@@ -9,7 +9,7 @@ from datetime import datetime
 from collections import deque
 
 from config import (
-    stereo_vision, is_streaming, current_config, logger
+    current_config, logger
 )
 from utils import emit
 
