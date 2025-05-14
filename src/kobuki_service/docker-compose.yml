@@ -23,22 +23,6 @@ services:
     environment:
       - ROS_DOMAIN_ID=0
 
-  # Teleop service for keyboard control
-  teleop:
-    image: turtlebot2_api:latest
-    container_name: turtlebot2_teleop
-    networks:
-      - ros_net
-    depends_on:
-      - kobuki
-    tty: true
-    stdin_open: true
-    command: >
-      bash -c "source /opt/ros/humble/setup.bash && source /opt/ros2_ws/install/setup.bash && 
-              sleep 5 && # Wait for kobuki to start
-              ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap cmd_vel:=commands/velocity"
-    environment:
-      - ROS_DOMAIN_ID=0
 
   # Debugging service to help identify packages and launch files
   debug:
