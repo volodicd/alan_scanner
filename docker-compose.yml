@@ -76,30 +76,10 @@ services:
       - kobuki
     # Wait for the robot to initialize before starting
     command: >
-      bash -c "source /opt/ros/humble/setup.bash && source /opt/ros2_ws/install/setup.bash && 
-              echo 'Waiting for robot to initialize...' && 
-              sleep 10 && 
-              python3 turtlebot2_example.py"
+      bash -c "echo 'ur main will be running here'"
     environment:
       - ROS_DOMAIN_ID=0
 
-  # Shell service for interactive development
-  shell:
-    image: turtlebot2_api:latest
-    container_name: turtlebot2_shell
-    networks:
-      - ros_net
-    volumes:
-      - .:/app  # Mount the current directory
-    devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0  # Also add device to shell container
-    depends_on:
-      - kobuki
-    stdin_open: true
-    tty: true
-    command: bash
-    environment:
-      - ROS_DOMAIN_ID=0
 
 # Define the custom network
 networks:

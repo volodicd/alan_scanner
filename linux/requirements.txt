@@ -1,3 +1,0 @@
-# Note: These packages are already installed in the ROS environment
-# Don't specify versions to avoid conflicts with ROS provided packages
-numpy

@@ -1,12 +1,9 @@
 FROM ros:humble-ros-base
 
-# Set working directory
 WORKDIR /app
-
-# Avoid prompts during package installation
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Install required ROS2 packages and dependencies
+# ROS2 packages
 RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-colcon-common-extensions \
