@@ -1,5 +1,5 @@
 # routes/camera_routes.py
-from flask import jsonify
+from flask import jsonify, request
 import cv2
 import base64
 import threading
@@ -8,22 +8,10 @@ import os
 from datetime import datetime
 from collections import deque
 
-from config import (
-    current_config, logger
-)
-from utils import emit
+from app_context import app_ctx
+import logging
 
-# Global thread for streaming
-stream_thread = None
-stream_thread_active = False  # Track if the thread should continue running
-
-# Thread safety lock
-thread_lock = threading.Lock()
-
-# For FPS calculation
-frame_times = deque(maxlen=30)  # Store last 30 frame timestamps
-last_fps_update = 0
-current_fps = 0
+logger = logging.getLogger(__name__)
 
 
 def register_camera_routes(app):
@@ -31,256 +19,255 @@ def register_camera_routes(app):
 
     @app.route('/api/stream/start', methods=['POST'])
     def start_stream():
-        global is_streaming, stream_thread, stream_thread_active, stereo_vision
-
-        with thread_lock:
-            # Check if thread is still running from previous session
-            if stream_thread is not None and stream_thread.is_alive():
-                # Stop previous thread
-                is_streaming = False
-                stream_thread_active = False
-                # Wait for thread to finish
-                stream_thread.join(timeout=2.0)
-
-            if is_streaming:
+        with app_ctx.lock:
+            # Check if already streaming
+            if app_ctx.is_streaming:
                 return jsonify({'success': False, 'message': 'Stream is already running'})
 
+            # Stop previous thread if it exists
+            if app_ctx.stream_thread is not None and app_ctx.stream_thread.is_alive():
+                app_ctx.stream_thread_active = False
+                app_ctx.stream_thread.join(timeout=2.0)
+
             # Initialize stereo vision if needed
-            if stereo_vision is None:
+            if app_ctx.stereo_vision is None:
                 from stereo_vision import StereoVision
-                stereo_vision = StereoVision(
-                    left_cam_idx=current_config["left_cam_idx"],
-                    right_cam_idx=current_config["right_cam_idx"],
-                    width=current_config["width"],
-                    height=current_config["height"]
+                app_ctx.stereo_vision = StereoVision(
+                    left_cam_idx=app_ctx.config["left_cam_idx"],
+                    right_cam_idx=app_ctx.config["right_cam_idx"],
+                    width=app_ctx.config["width"],
+                    height=app_ctx.config["height"]
                 )
+                # Set SGBM params
+                app_ctx.stereo_vision.set_sgbm_params(app_ctx.config["sgbm_params"])
 
             # Start streaming thread
-            is_streaming = True
-            stream_thread_active = True
-            stream_thread = threading.Thread(target=process_stream)
-            stream_thread.daemon = True
-            stream_thread.start()
+            app_ctx.is_streaming = True
+            app_ctx.stream_thread_active = True
+            app_ctx.stream_thread = threading.Thread(target=process_stream)
+            app_ctx.stream_thread.daemon = True
+            app_ctx.stream_thread.start()
 
         return jsonify({'success': True})
 
     @app.route('/api/stream/stop', methods=['POST'])
     def stop_stream():
-        global is_streaming, stream_thread, stream_thread_active
-
-        with thread_lock:
-            if not is_streaming:
+        with app_ctx.lock:
+            if not app_ctx.is_streaming:
                 return jsonify({'success': False, 'message': 'Stream is not running'})
 
             # Set flags to stop streaming
-            is_streaming = False
-            stream_thread_active = False
+            app_ctx.is_streaming = False
+            app_ctx.stream_thread_active = False
 
             # Wait for thread to finish
-            if stream_thread is not None and stream_thread.is_alive():
-                stream_thread.join(timeout=5.0)
-                if stream_thread.is_alive():
+            if app_ctx.stream_thread is not None and app_ctx.stream_thread.is_alive():
+                app_ctx.stream_thread.join(timeout=5.0)
+                if app_ctx.stream_thread.is_alive():
                     logger.warning("Stream thread did not terminate within timeout")
 
         return jsonify({'success': True})
 
     @app.route('/api/capture', methods=['POST'])
     def handle_capture_frame():
-        if stereo_vision is None:
-            return jsonify({'success': False, 'message': 'Stereo vision not initialized'}), 400
+        with app_ctx.lock:
+            if app_ctx.stereo_vision is None:
+                return jsonify({'success': False, 'message': 'Stereo vision not initialized'}), 400
 
         try:
-            left_frame, right_frame = stereo_vision.capture_frames()
-            if left_frame is None or right_frame is None:
-                return jsonify({'success': False, 'message': 'Failed to capture frames'}), 500
+            # Use context manager to ensure cameras are properly handled
+            with app_ctx.stereo_vision:
+                left_frame, right_frame = app_ctx.stereo_vision.capture_frames()
+                if left_frame is None or right_frame is None:
+                    return jsonify({'success': False, 'message': 'Failed to capture frames'}), 500
 
-            # Get the current timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                # Get the current timestamp
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-            # Make sure directory exists
-            os.makedirs('static/captures', exist_ok=True)
+                # Save raw captures
+                left_filepath = f"static/captures/left_{timestamp}.jpg"
+                right_filepath = f"static/captures/right_{timestamp}.jpg"
+                cv2.imwrite(left_filepath, left_frame)
+                cv2.imwrite(right_filepath, right_frame)
 
-            # Save raw captures
-            left_filepath = f"static/captures/left_{timestamp}.jpg"
-            right_filepath = f"static/captures/right_{timestamp}.jpg"
-            cv2.imwrite(left_filepath, left_frame)
-            cv2.imwrite(right_filepath, right_frame)
+                # Process and save disparity if calibration is loaded
+                disparity_filepath = None
+                has_calibration = False
 
-            # Process and save disparity if calibration is loaded
-            disparity_filepath = None
-            has_calibration = False
+                try:
+                    has_calibration = app_ctx.stereo_vision.load_calibration()
+                    if has_calibration:
+                        left_rect, right_rect = app_ctx.stereo_vision.get_rectified_images(left_frame, right_frame)
+                        _, disp_color = app_ctx.stereo_vision.compute_disparity_map(left_rect, right_rect)
+                        disparity_filepath = f"static/captures/disparity_{timestamp}.jpg"
+                        cv2.imwrite(disparity_filepath, disp_color)
+                except Exception as e:
+                    logger.error(f"Error processing disparity: {str(e)}")
+                    # Continue with returning the raw frames
 
-            try:
-                has_calibration = stereo_vision.load_calibration()
-                if has_calibration:
-                    left_rect, right_rect = stereo_vision.get_rectified_images(left_frame, right_frame)
-                    _, disp_color = stereo_vision.compute_disparity_map(left_rect, right_rect)
-                    disparity_filepath = f"static/captures/disparity_{timestamp}.jpg"
-                    cv2.imwrite(disparity_filepath, disp_color)
-            except Exception as e:
-                logger.error(f"Error processing disparity: {str(e)}")
-                # Continue with returning the raw frames
+                return jsonify({
+                    'success': True,
+                    'timestamp': timestamp,
+                    'left_path': left_filepath,
+                    'right_path': right_filepath,
+                    'disparity_path': disparity_filepath,
+                    'has_calibration': has_calibration
+                })
 
-            return jsonify({
-                'success': True,
-                'timestamp': timestamp,
-                'left_path': left_filepath,
-                'right_path': right_filepath,
-                'disparity_path': disparity_filepath,
-                'has_calibration': has_calibration
-            })
-
+        except cv2.error as e:
+            logger.error(f"OpenCV error: {str(e)}")
+            return jsonify({'success': False, 'message': 'Camera error: Try restarting cameras'}), 500
+        except IOError as e:
+            logger.error(f"IO error: {str(e)}")
+            return jsonify({'success': False, 'message': 'Camera connection lost'}), 500
         except Exception as e:
-            logger.error(f"Failed to capture frame: {str(e)}")
-            return jsonify({'success': False, 'message': str(e)}), 500
-
-
-def calculate_fps():
-    """Calculate the current FPS based on stored frame times."""
-    global frame_times, current_fps
-
-    if len(frame_times) < 2:
-        return 0.0
-
-    # Calculate time difference between oldest and newest frame
-    time_diff = frame_times[-1] - frame_times[0]
-    if time_diff <= 0:
-        return 0.0
-
-    # Calculate FPS based on number of frames and time elapsed
-    return (len(frame_times) - 1) / time_diff
+            logger.error(f"Unexpected error: {str(e)}")
+            return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
 
 def process_stream():
     """Process and stream frames from the cameras."""
-    global is_streaming, stereo_vision, stream_thread_active, frame_times, current_fps, last_fps_update
+    # Set maximum size for frame times queue
+    max_frame_times = 30
+    last_full_frame_time = 0
 
-    if stereo_vision is None:
-        logger.error("Stereo vision not initialized")
-        emit('error', {'message': 'Stereo vision not initialized'})
-        with thread_lock:
-            is_streaming = False
-            stream_thread_active = False
-        return
-
-    # Open cameras
     try:
-        stereo_vision.open_cameras()
-    except Exception as e:
-        logger.error(f"Failed to open cameras: {str(e)}")
-        emit('error', {'message': f"Failed to open cameras: {str(e)}"})
-        with thread_lock:
-            is_streaming = False
-            stream_thread_active = False
-        return
+        with app_ctx.lock:
+            if app_ctx.stereo_vision is None:
+                logger.error("Stereo vision not initialized")
+                app_ctx.emit('error', {'message': 'Stereo vision not initialized'})
+                app_ctx.is_streaming = False
+                app_ctx.stream_thread_active = False
+                return
 
-    # Check if calibration is available
-    has_calibration = False
-    try:
-        has_calibration = stereo_vision.load_calibration()
-        if has_calibration:
-            logger.info("Calibration loaded successfully")
-        else:
-            logger.info("No calibration data found, streaming raw frames")
-    except Exception as e:
-        logger.error(f"Error loading calibration: {str(e)}")
-        emit('error', {'message': f"Calibration error: {str(e)}"})
+        # Use context manager to ensure cameras are properly closed
+        with app_ctx.stereo_vision:
+            # Check if calibration is available
+            has_calibration = app_ctx.stereo_vision.load_calibration()
+            if has_calibration:
+                logger.info("Calibration loaded successfully")
+            else:
+                logger.info("No calibration data found, streaming raw frames")
 
-    # Target frame rate control
-    target_fps = 30
-    frame_time = 1.0 / target_fps
-    last_frame_time = time.time()
+            # Target frame rate control
+            target_fps = 30
+            frame_time = 1.0 / target_fps
+            last_frame_time = time.time()
 
-    # Main streaming loop
-    try:
-        while is_streaming and stream_thread_active:
-            # Maintain frame rate
-            current_time = time.time()
-            elapsed = current_time - last_frame_time
-            if elapsed < frame_time:
-                time.sleep(frame_time - elapsed)
+            # Main streaming loop - check both flags in a thread-safe way
+            stream_active = True
+            while stream_active:
+                with app_ctx.lock:
+                    stream_active = app_ctx.is_streaming and app_ctx.stream_thread_active
 
-            try:
-                # Record this frame's time for FPS calculation
+                if not stream_active:
+                    break
+
+                # Maintain frame rate
                 current_time = time.time()
-                frame_times.append(current_time)
+                elapsed = current_time - last_frame_time
+                if elapsed < frame_time:
+                    time.sleep(frame_time - elapsed)
 
-                # Update FPS calculation every second
-                if current_time - last_fps_update >= 1.0:
-                    current_fps = calculate_fps()
-                    last_fps_update = current_time
+                try:
+                    # Record this frame's time for FPS calculation
+                    current_time = time.time()
+                    with app_ctx.lock:
+                        app_ctx.frame_times.append(current_time)
+                        if len(app_ctx.frame_times) > max_frame_times:
+                            app_ctx.frame_times.pop(0)
 
-                # Capture frames
-                left_frame, right_frame = stereo_vision.capture_frames()
+                    # Update FPS calculation every second
+                    if current_time - app_ctx.last_fps_update >= 1.0:
+                        with app_ctx.lock:
+                            app_ctx.current_fps = app_ctx.calculate_fps()
+                            app_ctx.last_fps_update = current_time
 
-                if left_frame is None or right_frame is None:
-                    logger.warning("Failed to capture frames")
-                    emit('error', {'message': "Frame capture failed. Check camera connections."})
-                    time.sleep(0.5)
-                    continue
+                    # Capture frames
+                    left_frame, right_frame = app_ctx.stereo_vision.capture_frames()
 
-                # Process frames if calibration is available
-                frames_to_send = {}
-                if has_calibration:
-                    try:
-                        # Rectify images
-                        left_rect, right_rect = stereo_vision.get_rectified_images(left_frame, right_frame)
+                    if left_frame is None or right_frame is None:
+                        logger.warning("Failed to capture frames")
+                        app_ctx.emit('error', {'message': "Frame capture failed. Check camera connections."})
+                        time.sleep(0.5)
+                        continue
 
-                        # Compute disparity map
-                        _, disp_color = stereo_vision.compute_disparity_map(left_rect, right_rect)
+                    # Check if we should send full quality frames (once per second)
+                    should_send_full = (current_time - last_full_frame_time) >= 1.0
 
-                        frames_to_send = {
-                            'left': left_rect,
-                            'right': right_rect,
-                            'disparity': disp_color
-                        }
-                    except Exception as e:
-                        logger.error(f"Error processing stereo images: {str(e)}")
-                        # Fall back to raw frames if rectification fails
+                    # Process frames if calibration is available
+                    frames_to_send = {}
+                    if has_calibration:
+                        try:
+                            # Rectify images
+                            left_rect, right_rect = app_ctx.stereo_vision.get_rectified_images(left_frame, right_frame)
+
+                            # Compute disparity map
+                            _, disp_color = app_ctx.stereo_vision.compute_disparity_map(left_rect, right_rect)
+
+                            frames_to_send = {
+                                'left': left_rect,
+                                'right': right_rect,
+                                'disparity': disp_color
+                            }
+                        except Exception as e:
+                            logger.error(f"Error processing stereo images: {str(e)}")
+                            # Fall back to raw frames if rectification fails
+                            frames_to_send = {
+                                'left': left_frame,
+                                'right': right_frame
+                            }
+                    else:
+                        # Just use raw frames
                         frames_to_send = {
                             'left': left_frame,
                             'right': right_frame
                         }
-                else:
-                    # Just use raw frames
-                    frames_to_send = {
-                        'left': left_frame,
-                        'right': right_frame
-                    }
 
-                # Convert frames to JPEG for streaming
-                encoded_frames = {}
-                for key, frame in frames_to_send.items():
-                    try:
-                        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-                        encoded_frames[key] = base64.b64encode(buffer).decode('utf-8')
-                    except Exception as e:
-                        logger.error(f"Error encoding {key} frame: {str(e)}")
+                    # Convert frames to JPEG for streaming
+                    encoded_frames = {}
+                    for key, frame in frames_to_send.items():
+                        try:
+                            # Optimize quality based on frame type and send frequency
+                            quality = 80 if should_send_full or key == 'disparity' else 40
+                            scale = 1.0 if should_send_full or key == 'disparity' else 0.5
 
-                # Send frames via websocket if we have any
-                if encoded_frames:
-                    # Add FPS information
-                    data_to_send = encoded_frames.copy()
-                    data_to_send['fps'] = round(current_fps, 1)
-                    emit('frames', data_to_send)
+                            # Resize frame for efficiency
+                            if scale < 1.0:
+                                new_width = int(frame.shape[1] * scale)
+                                new_height = int(frame.shape[0] * scale)
+                                frame = cv2.resize(frame, (new_width, new_height))
 
-                # Update last frame time
-                last_frame_time = current_time
+                            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
+                            encoded_frames[key] = base64.b64encode(buffer).decode('utf-8')
+                        except Exception as e:
+                            logger.error(f"Error encoding {key} frame: {str(e)}")
 
-            except Exception as e:
-                logger.error(f"Error in streaming thread: {str(e)}")
-                emit('error', {'message': f"Streaming error: {str(e)}"})
-                time.sleep(0.5)
+                    # Update last full frame time if we sent full quality
+                    if should_send_full:
+                        last_full_frame_time = current_time
 
+                    # Send frames via websocket if we have any
+                    if encoded_frames:
+                        # Add FPS information
+                        with app_ctx.lock:
+                            data_to_send = encoded_frames.copy()
+                            data_to_send['fps'] = round(app_ctx.current_fps, 1)
+                        app_ctx.emit('frames', data_to_send)
+
+                    # Update last frame time
+                    last_frame_time = current_time
+
+                except Exception as e:
+                    logger.error(f"Error in streaming thread: {str(e)}")
+                    app_ctx.emit('error', {'message': f"Streaming error: {str(e)}"})
+                    time.sleep(0.5)
+
+    except Exception as e:
+        logger.error(f"Fatal error in streaming thread: {str(e)}")
     finally:
-        # Clean up when streaming stops
-        try:
-            stereo_vision.close_cameras()
-        except Exception as e:
-            logger.error(f"Error closing cameras: {str(e)}")
-
-        # Reset flags
-        with thread_lock:
-            is_streaming = False
-            stream_thread_active = False
+        # Clean up when streaming stops - ensure thread state is reset
+        with app_ctx.lock:
+            app_ctx.is_streaming = False
+            app_ctx.stream_thread_active = False
         logger.info("Streaming stopped")

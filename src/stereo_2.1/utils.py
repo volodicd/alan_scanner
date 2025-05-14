@@ -1,13 +1,20 @@
 # utils.py
-socketio = None
+import os
+import logging
 
-def init_socketio(io):
-    global socketio
-    socketio = io
+logger = logging.getLogger(__name__)
 
-def emit(event, data):
-    global socketio
-    if socketio:
-        socketio.emit(event, data)
-    else:
-        print(f"WARNING: Attempted to emit '{event}' but socketio is not initialized!")
+def ensure_app_directories():
+    """Create all necessary directories for the application"""
+    dirs = [
+        'static/captures',
+        'static/calibration',
+        'static/img',
+        'static/css',
+        'static/js',
+    ]
+    for directory in dirs:
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Failed to create directory {directory}: {str(e)}")

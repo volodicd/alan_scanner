@@ -4,9 +4,10 @@ import os
 import platform
 import cv2
 
-from config import (
-    current_config, stereo_vision, logger
-)
+from app_context import app_ctx
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def register_settings_routes(app):
@@ -17,10 +18,11 @@ def register_settings_routes(app):
         """Get or update configuration settings."""
         if request.method == 'GET':
             # Return current configuration
-            return jsonify({
-                'success': True,
-                'config': current_config
-            })
+            with app_ctx.lock:
+                return jsonify({
+                    'success': True,
+                    'config': app_ctx.config
+                })
 
         elif request.method == 'POST':
             try:
@@ -28,31 +30,32 @@ def register_settings_routes(app):
                 if not new_config:
                     return jsonify({'success': False, 'message': 'No configuration data provided'}), 400
 
-                # Validate camera indices
-                if 'left_cam_idx' in new_config and 'right_cam_idx' in new_config:
-                    if new_config['left_cam_idx'] == new_config['right_cam_idx']:
-                        return jsonify({
-                            'success': False,
-                            'message': 'Left and right camera indices must be different'
-                        }), 400
+                with app_ctx.lock:
+                    # Validate camera indices
+                    if 'left_cam_idx' in new_config and 'right_cam_idx' in new_config:
+                        if new_config['left_cam_idx'] == new_config['right_cam_idx']:
+                            return jsonify({
+                                'success': False,
+                                'message': 'Left and right camera indices must be different'
+                            }), 400
 
-                # Update SGBM parameters if provided
-                if 'sgbm_params' in new_config and isinstance(new_config['sgbm_params'], dict):
-                    for key, value in new_config['sgbm_params'].items():
-                        if key in current_config['sgbm_params']:
-                            current_config['sgbm_params'][key] = value
+                    # Update SGBM parameters if provided
+                    if 'sgbm_params' in new_config and isinstance(new_config['sgbm_params'], dict):
+                        for key, value in new_config['sgbm_params'].items():
+                            if key in app_ctx.config['sgbm_params']:
+                                app_ctx.config['sgbm_params'][key] = value
 
-                    # If stereo_vision is initialized, update its parameters too
-                    if stereo_vision is not None:
-                        stereo_vision.set_sgbm_params(current_config['sgbm_params'])
+                        # If stereo_vision is initialized, update its parameters too
+                        if app_ctx.stereo_vision is not None:
+                            app_ctx.stereo_vision.set_sgbm_params(app_ctx.config['sgbm_params'])
 
-                    # Remove from new_config since we've handled it
-                    del new_config['sgbm_params']
+                        # Remove from new_config since we've handled it
+                        del new_config['sgbm_params']
 
-                # Update other config items
-                for key, value in new_config.items():
-                    if key in current_config:
-                        current_config[key] = value
+                    # Update other config items
+                    for key, value in new_config.items():
+                        if key in app_ctx.config:
+                            app_ctx.config[key] = value
 
                 # Log update
                 logger.info("Configuration updated")
@@ -60,13 +63,12 @@ def register_settings_routes(app):
                 return jsonify({
                     'success': True,
                     'message': 'Configuration updated',
-                    'config': current_config
+                    'config': app_ctx.config
                 })
 
             except Exception as e:
                 logger.error(f"Error updating config: {str(e)}")
                 return jsonify({'success': False, 'message': str(e)}), 500
-        return None
 
     @app.route('/api/system/info', methods=['GET'])
     def get_system_info():
@@ -82,8 +84,8 @@ def register_settings_routes(app):
 
         # Get available cameras
         available_cameras = []
-        # In the get_system_info function, modify the camera detection code:
-        for i in range(5):  # Check first 5 indices
+        # Check first 5 indices
+        for i in range(5):
             cap = None
             try:
                 cap = cv2.VideoCapture(i)
@@ -108,6 +110,10 @@ def register_settings_routes(app):
 
         # Check if calibration exists
         has_calibration = os.path.exists('stereo_calibration.npy')
+
+        # Get current config
+        with app_ctx.lock:
+            current_config = app_ctx.config.copy()
 
         return jsonify({
             'success': True,

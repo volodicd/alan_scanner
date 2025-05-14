@@ -58,6 +58,18 @@ class StereoVision:
             'speckle_range': 32
         }
 
+    # Add to StereoVision class the context manager methods
+
+    def __enter__(self):
+        """Context manager for safe camera usage"""
+        self.open_cameras()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Ensure cameras are released"""
+        self.close_cameras()
+        return False  # Don't suppress exceptions
+
     def open_cameras(self):
         """Open and configure both cameras."""
         logger.info("Opening cameras (Left: %d, Right: %d)", self.left_cam_idx, self.right_cam_idx)
