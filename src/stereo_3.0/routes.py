@@ -1,11 +1,10 @@
 from flask import Blueprint, request, jsonify, Response
 import cv2
 import platform
-import os
 import logging
 from controller import VisionController
 
-# Create blueprint and controller instance
+
 api = Blueprint('api', __name__, url_prefix='/api')
 vision_controller = VisionController()
 
@@ -70,10 +69,10 @@ def get_turtlebot_data():
     data = vision_controller.get_vision_data()
     # Return only the exact fields needed by TurtleBot
     return jsonify({
-        'is_object': data['is_object'],
-        'distance_object': data['distance_object'],
-        'objs': data['objs'],
-        'final': data['final']
+        'is_object': data['is_object'], # send bool if object is close to the turtlebot
+        'distance_object': data['distance_object'], # distance to the main object
+        'objs': data['objs'], # list of 16 parts of the picture with the avarage distance to each of that 16 parts
+        'final': data['final'] # probably will be deleted, was planned for turetlebot service to get know if the map is finished
     })
 
 
@@ -206,6 +205,7 @@ def handle_config():
                 'success': False,
                 'message': message
             }), 400
+    return None
 
 
 @api.route('/system/info', methods=['GET'])

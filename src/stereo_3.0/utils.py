@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 
 def ensure_directories():
     """Create all necessary directories for the application"""
+    """Actually not really usable, will be removed in the future, for testing"""
     dirs = [
         'data/captures',
         'data/calibration',
