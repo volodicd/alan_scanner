@@ -1,18 +1,16 @@
-# utils.py
 import os
 import logging
 
 logger = logging.getLogger(__name__)
 
-def ensure_app_directories():
+
+def ensure_directories():
     """Create all necessary directories for the application"""
     dirs = [
-        'static/captures',
-        'static/calibration',
-        'static/img',
-        'static/css',
-        'static/js',
+        'data/captures',
+        'data/calibration',
     ]
+
     for directory in dirs:
         try:
             os.makedirs(directory, exist_ok=True)
