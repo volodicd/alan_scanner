@@ -1,10 +1,12 @@
+import base64
+import logging
+import os
 import threading
 import time
-import logging
-import base64
+
 import cv2
-import os
 import numpy as np
+
 from stereo_vision import StereoVision
 
 logger = logging.getLogger(__name__)
@@ -203,37 +205,36 @@ class VisionController:
         """Get current vision data for TurtleBot integration"""
         with self.lock:
             current_time = time.time()
-            data_age = current_time - self.last_update_time
-
-            # Add status information
             result = self.vision_data.copy()
-            result["status"] = "stale" if data_age > 2.0 else "current"
-            result["age"] = round(data_age, 3)
-
             return result
 
     def get_encoded_frames(self, quality=80, full_size=True):
         """Get current frames as base64 encoded JPEG images"""
         with self.lock:
             frames = self.current_frames
-            if not frames["left"] is not None:
+
+            # Важлива перевірка на наявність кадрів
+            if frames["left"] is None:
                 return None
 
             result = {}
 
             for key in ["left", "right", "disparity"]:
                 if frames[key] is not None:
-                    # Apply scaling if not full size
-                    frame = frames[key]
-                    if not full_size:
-                        h, w = frame.shape[:2]
-                        new_w = int(w * 0.5)
-                        new_h = int(h * 0.5)
-                        frame = cv2.resize(frame, (new_w, new_h))
+                    try:
+                        # Apply scaling if not full size
+                        frame = frames[key]
+                        if not full_size:
+                            h, w = frame.shape[:2]
+                            new_w = int(w * 0.5)
+                            new_h = int(h * 0.5)
+                            frame = cv2.resize(frame, (new_w, new_h))
 
-                    # Encode to JPEG
-                    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
-                    result[key] = base64.b64encode(buffer).decode('utf-8')
+                        # Encode to JPEG
+                        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
+                        result[key] = base64.b64encode(buffer).decode('utf-8')
+                    except Exception as e:
+                        logger.error(f"Error encoding {key} frame: {str(e)}")
 
             result["timestamp"] = frames["timestamp"]
             return result

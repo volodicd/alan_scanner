@@ -1,9 +1,10 @@
-from flask import Blueprint, request, jsonify, Response
-import cv2
-import platform
 import logging
-from controller import VisionController
+import platform
 
+import cv2
+from flask import Blueprint, request, jsonify
+
+from controller import VisionController
 
 api = Blueprint('api', __name__, url_prefix='/api')
 vision_controller = VisionController()

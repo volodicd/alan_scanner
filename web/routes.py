@@ -1,18 +1,15 @@
-from flask import Blueprint, render_template, jsonify, request
-from flask_socketio import emit
 import logging
+import os
 import threading
 import time
-import os
+from flask import Blueprint, render_template, jsonify, request
 from client import VisionClient
 
 web = Blueprint('web', __name__)
 logger = logging.getLogger(__name__)
 
-# Create client instance
 vision_client = VisionClient(base_url=os.environ.get('VISION_SERVICE_URL', 'http://localhost:5050'))
 
-# Streaming state
 streaming_active = False
 streaming_thread = None
 streaming_lock = threading.Lock()
@@ -20,20 +17,18 @@ streaming_lock = threading.Lock()
 
 @web.route('/')
 def index():
-    """Render main page"""
     return render_template('index.html')
 
 
 @web.route('/api/stream/start', methods=['POST'])
 def start_stream():
-    """Start stream thread to push frames via SocketIO"""
+    """Start stream thread to push frames via socketio, basically init and lock thread"""
     global streaming_active, streaming_thread
 
     with streaming_lock:
         if streaming_active:
             return jsonify({'success': False, 'message': 'Stream already running'})
 
-        # Start vision service if not running
         response = vision_client.start_vision()
         if not response.get('success', False):
             return jsonify(response), 500
@@ -57,7 +52,8 @@ def stop_stream():
 
         streaming_active = False
 
-        # Do not stop vision service here - it may be used by other clients
+        # Do not stop vision service here - it may be used by turtle bot
+        # DO NOT DELTE STEREO INSTANCE HERE, WILL LEAD TO THE SITUATION WHERE WEB IS OFF, TURTLE IS ON, STEREO IS CRASHED
 
         return jsonify({'success': True})
 

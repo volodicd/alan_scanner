@@ -1,11 +1,11 @@
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+
 from flask import Flask, request
 from flask_socketio import SocketIO
-import logging
-from logging.handlers import RotatingFileHandler
-import os
-from routes import web
 
-import threading
+from routes import web
 
 # Setup logging
 logging.basicConfig(

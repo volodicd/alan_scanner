@@ -1,9 +1,10 @@
-import cv2
-import numpy as np
-import time
 import logging
 import os
+import time
 from datetime import datetime
+
+import cv2
+import numpy as np
 
 logger = logging.getLogger(__name__)
 

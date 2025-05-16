@@ -1,9 +1,11 @@
-from flask import Flask
 import logging
 from logging.handlers import RotatingFileHandler
+
+from flask import Flask
+from waitress import serve
+
 from routes import api
 from utils import ensure_directories
-from waitress import serve
 
 logging.basicConfig(
     level=logging.INFO,
