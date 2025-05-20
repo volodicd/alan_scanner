@@ -8,20 +8,190 @@ import requests
 import time
 import math
 import random
+import numpy as np
+from collections import deque
+import threading
 
 # Import the shared position tracker
 from position_tracker import position_tracker
 
-class TurtleBotFrontierDetection(Node):
+class WavefrontFrontierDetector:
+    """Implementation of the Wavefront Frontier Detector algorithm"""
+    
+    def __init__(self, grid_resolution=50):
+        # Grid resolution in cm
+        self.grid_resolution = grid_resolution
+        
+        # Map representation
+        self.grid = {}  # Dictionary-based sparse grid
+        
+        # Cell classifications
+        self.UNKNOWN = 0
+        self.OPEN_SPACE = 1
+        self.OCCUPIED = 2
+        
+        # Lists for WFD algorithm
+        self.map_open_list = set()
+        self.map_close_list = set()
+        self.frontier_open_list = set()
+        self.frontier_close_list = set()
+        
+        # Store frontiers
+        self.frontiers = []
+    
+    def update_grid(self, x, y, cell_type):
+        """Update a cell in the grid"""
+        grid_x = round(x / self.grid_resolution) * self.grid_resolution
+        grid_y = round(y / self.grid_resolution) * self.grid_resolution
+        self.grid[(grid_x, grid_y)] = cell_type
+    
+    def get_cell_type(self, x, y):
+        """Get the type of a cell in the grid"""
+        grid_x = round(x / self.grid_resolution) * self.grid_resolution
+        grid_y = round(y / self.grid_resolution) * self.grid_resolution
+        return self.grid.get((grid_x, grid_y), self.UNKNOWN)
+    
+    def is_frontier_point(self, x, y):
+        """Check if a point is a frontier point (unknown with at least one open neighbor)"""
+        # If the cell is not unknown, it's not a frontier
+        if self.get_cell_type(x, y) != self.UNKNOWN:
+            return False
+        
+        # Check if it has at least one open space neighbor
+        directions = [
+            (0, self.grid_resolution), (self.grid_resolution, 0),
+            (0, -self.grid_resolution), (-self.grid_resolution, 0)
+        ]
+        
+        for dx, dy in directions:
+            nx, ny = x + dx, y + dy
+            if self.get_cell_type(nx, ny) == self.OPEN_SPACE:
+                return True
+        
+        return False
+    
+    def detect_frontiers(self, robot_x, robot_y):
+        """Detect frontiers using Wavefront Frontier Detector algorithm"""
+        # Clear previous frontier data
+        self.map_open_list.clear()
+        self.map_close_list.clear()
+        self.frontier_open_list.clear()
+        self.frontier_close_list.clear()
+        self.frontiers.clear()
+        
+        # Initialize queue for first BFS (map exploration)
+        queue_m = deque()
+        
+        # Start from robot position
+        start_x = round(robot_x / self.grid_resolution) * self.grid_resolution
+        start_y = round(robot_y / self.grid_resolution) * self.grid_resolution
+        
+        # Add robot position to queue
+        queue_m.append((start_x, start_y))
+        self.map_open_list.add((start_x, start_y))
+        
+        # Neighbor directions
+        directions = [
+            (0, self.grid_resolution), (self.grid_resolution, 0),
+            (0, -self.grid_resolution), (-self.grid_resolution, 0)
+        ]
+        
+        # First BFS: find frontier points
+        while queue_m:
+            p_x, p_y = queue_m.popleft()
+            
+            # If already processed, skip
+            if (p_x, p_y) in self.map_close_list:
+                continue
+            
+            # Mark as processed
+            self.map_close_list.add((p_x, p_y))
+            
+            # If it's a frontier point, start second BFS to find the whole frontier
+            if self.is_frontier_point(p_x, p_y):
+                # Initialize new frontier
+                new_frontier = []
+                
+                # Initialize queue for second BFS (frontier extraction)
+                queue_f = deque()
+                queue_f.append((p_x, p_y))
+                self.frontier_open_list.add((p_x, p_y))
+                
+                # Second BFS: extract connected frontier points
+                while queue_f:
+                    q_x, q_y = queue_f.popleft()
+                    
+                    # If already in map_close_list or frontier_close_list, skip
+                    if ((q_x, q_y) in self.map_close_list or 
+                        (q_x, q_y) in self.frontier_close_list):
+                        continue
+                    
+                    # Mark as processed in frontier list
+                    self.frontier_close_list.add((q_x, q_y))
+                    
+                    # If it's a frontier point, add to the current frontier
+                    if self.is_frontier_point(q_x, q_y):
+                        new_frontier.append((q_x, q_y))
+                        
+                        # Add neighbors to queue_f
+                        for dx, dy in directions:
+                            w_x, w_y = q_x + dx, q_y + dy
+                            
+                            # Only add if not already in open or closed lists
+                            if ((w_x, w_y) not in self.frontier_open_list and 
+                                (w_x, w_y) not in self.frontier_close_list):
+                                queue_f.append((w_x, w_y))
+                                self.frontier_open_list.add((w_x, w_y))
+                
+                # Mark all points in this frontier as closed in map list to avoid reprocessing
+                for fx, fy in new_frontier:
+                    self.map_close_list.add((fx, fy))
+                
+                # Only add if the frontier has enough points
+                if len(new_frontier) >= 3:  # Minimum size to be considered a frontier
+                    self.frontiers.append(new_frontier)
+            
+            # Add neighbors to queue_m for map exploration
+            for dx, dy in directions:
+                v_x, v_y = p_x + dx, p_y + dy
+                
+                # Only add if not already in open or closed lists and is open space
+                if ((v_x, v_y) not in self.map_open_list and 
+                    (v_x, v_y) not in self.map_close_list and
+                    self.get_cell_type(v_x, v_y) == self.OPEN_SPACE):
+                    queue_m.append((v_x, v_y))
+                    self.map_open_list.add((v_x, v_y))
+        
+        # Calculate median points for each frontier
+        frontier_medians = []
+        for frontier in self.frontiers:
+            if frontier:
+                # Calculate median x and y
+                xs = [x for x, y in frontier]
+                ys = [y for x, y in frontier]
+                median_x = sorted(xs)[len(xs) // 2]
+                median_y = sorted(ys)[len(ys) // 2]
+                
+                # Calculate distance to robot
+                dist = math.sqrt((median_x - robot_x)**2 + (median_y - robot_y)**2)
+                
+                frontier_medians.append((median_x, median_y, dist))
+        
+        # Sort frontiers by distance from robot
+        frontier_medians.sort(key=lambda f: f[2])
+        
+        return frontier_medians
+
+class TurtleBotWFD(Node):
     def __init__(self):
-        super().__init__('turtlebot_frontier_detection')
+        super().__init__('turtlebot_wfd')
         
         # Publishers and subscribers
         self.vel_pub = self.create_publisher(Twist, 'commands/velocity', 10)
         self.bumper_sub = self.create_subscription(BumperEvent, 'events/bumper', self.bumper_callback, 10)
         
         # Vision API endpoint
-        self.vision_api_url = "http://localhost:5050/api/turtlebot/vision"
+        self.vision_api_url = "http://localhost:5000/api/turtlebot/vision"
         
         # Robot state - initialize from position tracker
         self.x = 0.0  # starting x position in cm
@@ -31,11 +201,16 @@ class TurtleBotFrontierDetection(Node):
         
         # Map state
         self.grid_size = 50  # cm
-        self.map_data = {}  # Dictionary to store map data
         self.position_history = {}  # Dictionary to store positions after each rotation
         self.rotation_count = 0  # Counter for rotations
-        self.frontiers = []  # List of frontier points
         self.visited_positions = set()  # Set of visited grid positions
+        
+        # Create Wavefront Frontier Detector
+        self.wfd = WavefrontFrontierDetector(grid_resolution=self.grid_size)
+        
+        # Exploration state tracking
+        self.consecutive_no_frontier_scans = 0
+        self.max_consecutive_no_frontier_scans = 3
         
         # Constants
         self.MIN_FRONTIER_DIST = 100  # Minimum distance to consider a frontier (cm)
@@ -45,8 +220,9 @@ class TurtleBotFrontierDetection(Node):
         # Reset position tracker and store initial position
         position_tracker.reset_position()
         position_tracker.set_initial_position(self.x, self.y, self.heading)
+        position_tracker.set_finished_flag(False)  # Ensure finished flag is reset
         
-        self.get_logger().info('TurtleBot Frontier Detection initialized at (0, 0)')
+        self.get_logger().info('TurtleBot with Wavefront Frontier Detector initialized at (0, 0)')
         self.get_logger().info('Waiting for start flag to be set to True...')
 
     def bumper_callback(self, msg):
@@ -83,6 +259,9 @@ class TurtleBotFrontierDetection(Node):
             grid_y = round(self.y / self.grid_size) * self.grid_size
             self.visited_positions.add((grid_x, grid_y))
             
+            # Update grid with open space
+            self.wfd.update_grid(self.x, self.y, self.wfd.OPEN_SPACE)
+            
             # Update shared position tracker
             position_tracker.update_position(self.x, self.y, self.heading)
             
@@ -101,6 +280,9 @@ class TurtleBotFrontierDetection(Node):
             distance = duration * 0.2 * 100  # Convert to cm
             self.x -= distance * math.cos(math.radians(self.heading))
             self.y -= distance * math.sin(math.radians(self.heading))
+            
+            # Update grid with open space
+            self.wfd.update_grid(self.x, self.y, self.wfd.OPEN_SPACE)
             
             # Update shared position tracker
             position_tracker.update_position(self.x, self.y, self.heading)
@@ -167,9 +349,10 @@ class TurtleBotFrontierDetection(Node):
         distance_object = vision_data.get('distance_object', 1000)
         grid_distances = vision_data.get('objs', [1000] * 16)
         
-        # Update map data for current position
+        # Update grid for current position (mark as open space)
         grid_x = round(self.x / self.grid_size) * self.grid_size
         grid_y = round(self.y / self.grid_size) * self.grid_size
+        self.wfd.update_grid(grid_x, grid_y, self.wfd.OPEN_SPACE)
         
         # Process the 4x4 grid of distances
         for i in range(4):
@@ -196,47 +379,52 @@ class TurtleBotFrontierDetection(Node):
                     point_grid_x = round(point_x / self.grid_size) * self.grid_size
                     point_grid_y = round(point_y / self.grid_size) * self.grid_size
                     
-                    # Store in map data
-                    map_key = (point_grid_x, point_grid_y)
-                    self.map_data[map_key] = {
-                        'distance': point_distance,
-                        'visited': (point_grid_x, point_grid_y) in self.visited_positions,
-                        'last_updated': time.time()
-                    }
+                    # If distance is short, mark as obstacle
+                    if point_distance < self.MAX_OBSTACLE_DIST:
+                        self.wfd.update_grid(point_grid_x, point_grid_y, self.wfd.OCCUPIED)
+                    else:
+                        # Mark as open space if distance is valid
+                        self.wfd.update_grid(point_grid_x, point_grid_y, self.wfd.OPEN_SPACE)
+                        
+                        # Add a few cells beyond this as unknown (potential frontiers)
+                        for k in range(1, 4):
+                            beyond_x = point_x + k * self.grid_size * math.cos(math.radians(abs_angle))
+                            beyond_y = point_y + k * self.grid_size * math.sin(math.radians(abs_angle))
+                            beyond_grid_x = round(beyond_x / self.grid_size) * self.grid_size
+                            beyond_grid_y = round(beyond_y / self.grid_size) * self.grid_size
+                            
+                            # Only mark as unknown if not already classified
+                            if self.wfd.get_cell_type(beyond_grid_x, beyond_grid_y) == self.wfd.UNKNOWN:
+                                self.wfd.update_grid(beyond_grid_x, beyond_grid_y, self.wfd.UNKNOWN)
         
         return True
 
     def detect_frontiers(self):
-        """Detect frontiers in the current map"""
-        self.frontiers = []
+        """Use WFD algorithm to detect frontiers"""
+        # First update map with vision data
+        self.update_map_with_vision()
         
-        # Look for grid cells that border unexplored areas
-        for (x, y), data in self.map_data.items():
-            if data['visited']:
-                continue  # Skip visited cells
-                
-            # Check if this is a frontier (borders unexplored area)
-            is_frontier = False
-            
-            # Check adjacent cells
-            for dx, dy in [(self.grid_size, 0), (-self.grid_size, 0), (0, self.grid_size), (0, -self.grid_size)]:
-                adjacent = (x + dx, y + dy)
-                
-                # If adjacent cell not in map, this might be a frontier
-                if adjacent not in self.map_data:
-                    is_frontier = True
-                    break
-            
-            if is_frontier and data['distance'] > self.MIN_FRONTIER_DIST:
-                # Calculate distance to this frontier
-                dist_to_frontier = math.sqrt((x - self.x)**2 + (y - self.y)**2)
-                self.frontiers.append((x, y, dist_to_frontier))
+        # Use Wavefront Frontier Detector to find frontiers
+        frontier_medians = self.wfd.detect_frontiers(self.x, self.y)
         
-        # Sort frontiers by distance
-        self.frontiers.sort(key=lambda f: f[2])
+        self.get_logger().info(f'Detected {len(frontier_medians)} frontiers')
         
-        self.get_logger().info(f'Detected {len(self.frontiers)} frontiers')
-        return len(self.frontiers) > 0
+        # Store frontiers
+        self.frontiers = frontier_medians
+        
+        return len(frontier_medians) > 0
+
+    def is_exploration_complete(self):
+        """Determine if exploration is complete based on frontier detection"""
+        # If we've done multiple full scans and still found no frontiers, 
+        # consider exploration complete
+        if self.consecutive_no_frontier_scans >= self.max_consecutive_no_frontier_scans:
+            self.get_logger().info(f"No frontiers found after {self.consecutive_no_frontier_scans} complete scans")
+            self.get_logger().info("Exploration appears to be complete - all accessible areas mapped")
+            return True
+        
+        # Exploration is not yet complete
+        return False
 
     def move_to_frontier(self):
         """Move to the closest frontier"""
@@ -328,6 +516,10 @@ class TurtleBotFrontierDetection(Node):
             self.rotate(direction, abs(current_diff))
             
         self.get_logger().info('Successfully returned to start position and orientation')
+        
+        # Set the finished flag to true
+        position_tracker.set_finished_flag(True)
+        
         return True
 
     def check_for_obstacles(self):
@@ -380,29 +572,32 @@ class TurtleBotFrontierDetection(Node):
         return True
 
     def explore(self):
-        """Main exploration loop using frontier detection"""
+        """Main exploration loop using Wavefront Frontier Detection"""
+        # Make sure the finished flag is initially false
+        position_tracker.set_finished_flag(False)
+        
         # Wait for start signal before beginning
         if not self.wait_for_start():
             return
             
-        self.get_logger().info('Starting exploration')
+        self.get_logger().info('Starting exploration with Wavefront Frontier Detector')
         
         try:
             # Initial scan
             self.scan_surroundings()
             
-            # Use a counter to limit exploration time
-            exploration_counter = 0
-            max_exploration_steps = 100  # Adjust based on desired exploration duration
+            # Reset exploration tracking variables
+            self.consecutive_no_frontier_scans = 0
             
-            while rclpy.ok() and exploration_counter < max_exploration_steps:
-                # Update map with current vision data
-                self.update_map_with_vision()
-                
-                # Detect frontiers
+            # Main exploration loop - continues until we determine exploration is complete
+            while rclpy.ok():
+                # Detect frontiers using WFD
                 frontiers_exist = self.detect_frontiers()
                 
                 if frontiers_exist:
+                    # Found frontiers - reset consecutive scan counter
+                    self.consecutive_no_frontier_scans = 0
+                    
                     # Move to frontier
                     success = self.move_to_frontier()
                     
@@ -411,12 +606,17 @@ class TurtleBotFrontierDetection(Node):
                         self.scan_surroundings()
                 else:
                     # No frontiers found, scan again
-                    self.get_logger().info('No frontiers found, performing scan')
+                    self.get_logger().info('No frontiers found, performing full scan')
                     self.scan_surroundings()
                     
-                    # If still no frontiers, try random exploration
+                    # Check again after scanning
                     if not self.detect_frontiers():
-                        self.get_logger().info('Still no frontiers, moving randomly')
+                        # Increment consecutive no-frontier counter
+                        self.consecutive_no_frontier_scans += 1
+                        self.get_logger().info(f'Still no frontiers after scan ({self.consecutive_no_frontier_scans}/{self.max_consecutive_no_frontier_scans})')
+                        
+                        # Try random movement to discover new areas
+                        self.get_logger().info('Moving randomly to try to discover new areas')
                         self.rotate("left", random.randint(30, 120))
                         if not self.check_for_obstacles():
                             self.move_forward(1.0)
@@ -425,8 +625,10 @@ class TurtleBotFrontierDetection(Node):
                 self.get_logger().info(f'Explored {len(self.visited_positions)} grid cells')
                 self.get_logger().info(f'Rotation history contains {len(self.position_history)} entries')
                 
-                # Increment counter
-                exploration_counter += 1
+                # Check if exploration is complete based on frontier analysis
+                if self.is_exploration_complete():
+                    self.get_logger().info('WAVEFRONT FRONTIER DETECTION COMPLETE')
+                    break
                 
                 # Process ROS callbacks
                 rclpy.spin_once(self, timeout_sec=0.1)
@@ -435,6 +637,9 @@ class TurtleBotFrontierDetection(Node):
             
             # Return to start position
             self.return_to_start_position()
+            
+            # Set finish flag (also set in return_to_start_position, but setting again for certainty)
+            position_tracker.set_finished_flag(True)
                 
         except KeyboardInterrupt:
             self.get_logger().info('Exploration stopped by user')
@@ -450,7 +655,7 @@ class TurtleBotFrontierDetection(Node):
 
 def main():
     rclpy.init()
-    node = TurtleBotFrontierDetection()
+    node = TurtleBotWFD()
     
     try:
         node.explore()
