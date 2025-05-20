@@ -43,4 +43,4 @@ def handle_disconnect():
 
 if __name__ == '__main__':
     logger.info("Starting Web Service")
-    socketio.run(app, host='0.0.0.0', port=8080, debug=True)
+    socketio.run(app, host='0.0.0.0', port=8080, debug=True, allow_unsafe_werkzeug=True)

@@ -2,14 +2,14 @@ version: '3'
 
 services:
   vision-service:
-    build: ./stereo_3.0
+    build: ./temp_stereo_emulator
     ports:
       - "5050:5050"
     volumes:
       - ./data:/app/data
-    devices:
-      - /dev/video0:/dev/video0
-      - /dev/video1:/dev/video1
+#    devices:
+#      - /dev/video0:/dev/video0
+#      - /dev/video1:/dev/video1
     restart: unless-stopped
 
   web-service:
@@ -17,7 +17,8 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - VISION_SERVICE_URL=http://vision-service:5000
+      - VISION_SERVICE_URL=http://vision-service:5050
     depends_on:
       - vision-service
     restart: unless-stopped
+

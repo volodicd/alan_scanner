@@ -438,7 +438,7 @@ class StereoVision:
                 # Distance in cm
                 distance = int((baseline * focal_length / avg_disparity) * 100)
                 distance_object = min(max(distance, 10), 1000)  # Clip between 10cm and 10m
-                is_object = distance < 200  # Object closer than 2 meters
+                is_object = distance < 50  # Object closer than 0.5 meters
 
         # Calculate grid distances (4x4 grid = 16 regions)
         cell_h, cell_w = h // 4, w // 4
