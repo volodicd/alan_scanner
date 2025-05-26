@@ -67,6 +67,17 @@ class PositionTracker:
         """Get the current start flag value"""
         with self.position_lock:
             return self.start_flag
+
+    def set_finished_flag(self, value):
+        
+    	with self.position_lock:
+            self.finished_flag = bool(value)
+            logger.info(f"Finished flag set to {self.finished_flag}")
+
+    def get_finished_flag(self):   	    
+    	with self.position_lock:
+            return getattr(self, 'finished_flag', False)
+
     
     def set_initial_position(self, x, y, heading):
         """Remember the initial position"""

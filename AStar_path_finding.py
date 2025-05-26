@@ -1,118 +1,90 @@
 #!/usr/bin/env python3
 
-import rclpy
-from rclpy.node import Node
-from geometry_msgs.msg import Twist
-from kobuki_ros_interfaces.msg import BumperEvent
-import time
 import math
 import heapq
 
-class TurtleBotAStar(Node):
-    def __init__(self):
-        super().__init__('turtlebot_astar')
+class AStarPathfinder:
+    """A* pathfinding algorithm implementation for TurtleBot navigation"""
+    
+    def __init__(self, grid_size=50):
+        """Initialize the A* pathfinder
         
-        # Publishers and subscribers
-        self.vel_pub = self.create_publisher(Twist, 'commands/velocity', 10)
-        self.bumper_sub = self.create_subscription(BumperEvent, 'events/bumper', self.bumper_callback, 10)
-        
-        # Robot state
-        self.x = 0.0
-        self.y = 0.0
-        self.heading = 0  # degrees (0 = east, 90 = north)
-        self.obstacle_detected = False
-        
-        # A* navigation
-        self.grid_size = 50
+        Args:
+            grid_size (int): Size of grid cells in cm
+        """
+        self.grid_size = grid_size
         self.obstacles = set()  # Set of (grid_x, grid_y) positions
-        self.path = []
-        self.target_x = None
-        self.target_y = None
         
-        self.get_logger().info('TurtleBot initialized at (0, 0)')
-
-    def bumper_callback(self, msg):
-        """Handle bumper events"""
-        if msg.state == BumperEvent.PRESSED:
-            self.obstacle_detected = True
-            
-            # Add current position to obstacles
-            grid_x = round(self.x / self.grid_size) * self.grid_size
-            grid_y = round(self.y / self.grid_size) * self.grid_size
-            self.obstacles.add((grid_x, grid_y))
-            
-            self.get_logger().info(f'Obstacle detected at grid ({grid_x}, {grid_y})')
-            self.stop()
-            
-            # Handle obstacle
-            self.move_backward(1.0)
-            self.rotate("left", 45)
-            self.obstacle_detected = False
-            
-            # Recalculate path
-            if self.target_x is not None:
-                self.path = self.find_path(self.x, self.y, self.target_x, self.target_y)
-
-    def move_forward(self, duration=0.5):
-        """Move forward"""
-        msg = Twist()
-        msg.linear.x = 0.2  # m/s
-        self.vel_pub.publish(msg)
+    def add_obstacle(self, x, y):
+        """Add an obstacle to the pathfinder
         
-        if duration:
-            time.sleep(duration)
-            # Update position
-            self.x += duration * 0.2 * 100 * math.cos(math.radians(self.heading))
-            self.y += duration * 0.2 * 100 * math.sin(math.radians(self.heading))
-            self.stop()
-
-    def move_backward(self, duration=0.5):
-        """Move backward"""
-        msg = Twist()
-        msg.linear.x = -0.2  # m/s
-        self.vel_pub.publish(msg)
+        Args:
+            x (float): X coordinate in cm
+            y (float): Y coordinate in cm
+        """
+        grid_x = round(x / self.grid_size) * self.grid_size
+        grid_y = round(y / self.grid_size) * self.grid_size
+        self.obstacles.add((grid_x, grid_y))
+    
+    def remove_obstacle(self, x, y):
+        """Remove an obstacle from the pathfinder
         
-        if duration:
-            time.sleep(duration)
-            # Update position
-            self.x -= duration * 0.2 * 100 * math.cos(math.radians(self.heading))
-            self.y -= duration * 0.2 * 100 * math.sin(math.radians(self.heading))
-            self.stop()
-
-    def rotate(self, direction, angle):
-        """Rotate the robot"""
-        # Update heading
-        if direction == "left":
-            self.heading = (self.heading + angle) % 360
-            angular_vel = 1.0  # rad/s
-        else:
-            self.heading = (self.heading - angle) % 360
-            angular_vel = -1.0  # rad/s
+        Args:
+            x (float): X coordinate in cm
+            y (float): Y coordinate in cm
+        """
+        grid_x = round(x / self.grid_size) * self.grid_size
+        grid_y = round(y / self.grid_size) * self.grid_size
+        self.obstacles.discard((grid_x, grid_y))
+    
+    def clear_obstacles(self):
+        """Clear all obstacles"""
+        self.obstacles.clear()
+    
+    def sync_obstacles_from_grid(self, grid, occupied_value):
+        """Sync obstacles from a grid representation
+        
+        Args:
+            grid (dict): Dictionary mapping (x, y) to cell values
+            occupied_value: Value that represents an occupied cell
+        """
+        self.clear_obstacles()
+        for (x, y), value in grid.items():
+            if value == occupied_value:
+                self.obstacles.add((x, y))
+    
+    def heuristic(self, x1, y1, x2, y2):
+        """Calculate Manhattan distance heuristic
+        
+        Args:
+            x1, y1: Start coordinates
+            x2, y2: Goal coordinates
             
-        # Execute rotation
-        msg = Twist()
-        msg.angular.z = angular_vel
-        self.vel_pub.publish(msg)
+        Returns:
+            float: Manhattan distance
+        """
+        return abs(x1 - x2) + abs(y1 - y2)
+    
+    def find_path(self, start_x, start_y, goal_x, goal_y, bounds=(-500, 500, -500, 500)):
+        """Find path using A* algorithm
         
-        # Calculate time needed to rotate
-        duration = math.radians(angle) / abs(angular_vel)
-        time.sleep(duration)
-        self.stop()
-
-    def stop(self):
-        """Stop the robot"""
-        msg = Twist()
-        msg.linear.x = 0.0
-        msg.angular.z = 0.0
-        self.vel_pub.publish(msg)
-
-    def find_path(self, start_x, start_y, goal_x, goal_y):
-        """Find path using A* algorithm"""
+        Args:
+            start_x, start_y: Starting position in cm
+            goal_x, goal_y: Goal position in cm
+            bounds: (min_x, max_x, min_y, max_y) bounds for valid positions
+            
+        Returns:
+            list: List of (x, y) waypoints, or empty list if no path found
+        """
         # Round to grid
         start_x = round(start_x / self.grid_size) * self.grid_size
         start_y = round(start_y / self.grid_size) * self.grid_size
         goal_x = round(goal_x / self.grid_size) * self.grid_size
         goal_y = round(goal_y / self.grid_size) * self.grid_size
+        
+        # Check if start or goal is an obstacle
+        if (start_x, start_y) in self.obstacles or (goal_x, goal_y) in self.obstacles:
+            return []
         
         # A* algorithm data structures
         open_list = []  # Priority queue (f_score, (x, y))
@@ -127,6 +99,12 @@ class TurtleBotAStar(Node):
         # Directions: right, up, left, down
         directions = [(self.grid_size, 0), (0, self.grid_size), 
                      (-self.grid_size, 0), (0, -self.grid_size)]
+        
+        # Optional: Add diagonal movements for smoother paths
+        # directions.extend([(self.grid_size, self.grid_size), (self.grid_size, -self.grid_size),
+        #                    (-self.grid_size, self.grid_size), (-self.grid_size, -self.grid_size)])
+        
+        min_x, max_x, min_y, max_y = bounds
         
         while open_list:
             # Get node with lowest f-score
@@ -150,8 +128,12 @@ class TurtleBotAStar(Node):
                 nx, ny = current[0] + dx, current[1] + dy
                 neighbor = (nx, ny)
                 
-                # Skip if out of bounds or obstacle
-                if not (-500 <= nx <= 500 and -500 <= ny <= 500) or neighbor in self.obstacles:
+                # Skip if out of bounds
+                if not (min_x <= nx <= max_x and min_y <= ny <= max_y):
+                    continue
+                
+                # Skip if obstacle
+                if neighbor in self.obstacles:
                     continue
                     
                 # Skip if in closed set
@@ -159,7 +141,13 @@ class TurtleBotAStar(Node):
                     continue
                     
                 # Calculate tentative g score
-                g = g_score[current] + self.grid_size
+                # Use Euclidean distance for diagonal movements if enabled
+                if dx != 0 and dy != 0:
+                    move_cost = math.sqrt(2) * self.grid_size
+                else:
+                    move_cost = self.grid_size
+                
+                g = g_score[current] + move_cost
                 
                 # Update if better path found
                 if neighbor not in g_score or g < g_score[neighbor]:
@@ -170,91 +158,78 @@ class TurtleBotAStar(Node):
         
         # No path found
         return []
-
-    def heuristic(self, x1, y1, x2, y2):
-        """Calculate Manhattan distance heuristic"""
-        return abs(x1 - x2) + abs(y1 - y2)
-
-    def navigate_to_target(self):
-        """Navigate to user-specified target"""
-        # Get target coordinates
-        print("\nEnter target coordinates:")
-        self.target_x = float(input("X coordinate (-500 to 500): "))
-        self.target_y = float(input("Y coordinate (-500 to 500): "))
-        
-        # Make sure coordinates are in range
-        if not (-500 <= self.target_x <= 500 and -500 <= self.target_y <= 500):
-            print("Coordinates must be between -500 and 500.")
-            return
-            
-        self.get_logger().info(f"Navigating to target ({self.target_x}, {self.target_y})")
-        
-        # Find initial path
-        self.path = self.find_path(self.x, self.y, self.target_x, self.target_y)
-        
-        if not self.path:
-            self.get_logger().warning("No path found to target!")
-            return
-            
-        # Follow path
-        for i, (waypoint_x, waypoint_y) in enumerate(self.path):
-            # Skip first waypoint (current position)
-            if i == 0:
-                continue
-                
-            # Try to reach this waypoint
-            while True:
-                # Check if obstacle detected
-                if self.obstacle_detected:
-                    break
-                    
-                # Calculate direction to waypoint
-                dx = waypoint_x - self.x
-                dy = waypoint_y - self.y
-                target_heading = math.degrees(math.atan2(dy, dx)) % 360
-                
-                # Calculate distance to waypoint
-                distance = math.sqrt(dx*dx + dy*dy)
-                
-                # If reached waypoint
-                if distance < 25:
-                    self.get_logger().info(f"Reached waypoint {i}/{len(self.path)-1}")
-                    break
-                    
-                # Turn toward waypoint
-                heading_diff = (target_heading - self.heading + 180) % 360 - 180
-                
-                if abs(heading_diff) > 10:
-                    # Need to turn
-                    direction = "left" if heading_diff > 0 else "right"
-                    self.rotate(direction, min(abs(heading_diff), 30))
-                else:
-                    # Move forward
-                    self.move_forward(0.5)
-                    
-                # Process ROS callbacks
-                rclpy.spin_once(self, timeout_sec=0.01)
-                
-            # If obstacle encountered, recalculate path
-            if self.obstacle_detected:
-                self.path = self.find_path(self.x, self.y, self.target_x, self.target_y)
-                if not self.path:
-                    self.get_logger().warning("No new path found!")
-                    break
-                # Start from beginning of new path
-                i = 0
-        
-        self.get_logger().info(f"Navigation finished at position ({self.x:.1f}, {self.y:.1f})")
-
-def main():
-    rclpy.init()
-    bot = TurtleBotAStar()
     
-    try:
-        bot.navigate_to_target()
-    finally:
-        bot.stop()
-        rclpy.shutdown()
-
-if __name__ == "__main__":
-    main()
+    def smooth_path(self, path):
+        """Smooth the path by removing unnecessary waypoints
+        
+        Args:
+            path: List of (x, y) waypoints
+            
+        Returns:
+            list: Smoothed path
+        """
+        if len(path) <= 2:
+            return path
+        
+        smoothed = [path[0]]
+        i = 0
+        
+        while i < len(path) - 1:
+            # Try to connect current point to furthest visible point
+            for j in range(len(path) - 1, i, -1):
+                if self._is_path_clear(path[i], path[j]):
+                    smoothed.append(path[j])
+                    i = j
+                    break
+            else:
+                # If no direct path found, add next point
+                i += 1
+                if i < len(path):
+                    smoothed.append(path[i])
+        
+        return smoothed
+    
+    def _is_path_clear(self, start, end):
+        """Check if path between two points is clear of obstacles
+        
+        Args:
+            start: (x, y) tuple
+            end: (x, y) tuple
+            
+        Returns:
+            bool: True if path is clear
+        """
+        x1, y1 = start
+        x2, y2 = end
+        
+        # Use Bresenham's line algorithm to check all cells along the path
+        dx = abs(x2 - x1)
+        dy = abs(y2 - y1)
+        sx = 1 if x1 < x2 else -1
+        sy = 1 if y1 < y2 else -1
+        err = dx - dy
+        
+        x, y = x1, y1
+        
+        while True:
+            # Check if current cell is an obstacle
+            grid_x = round(x / self.grid_size) * self.grid_size
+            grid_y = round(y / self.grid_size) * self.grid_size
+            
+            if (grid_x, grid_y) in self.obstacles:
+                return False
+            
+            # Check if reached end
+            if abs(x - x2) < self.grid_size/2 and abs(y - y2) < self.grid_size/2:
+                break
+            
+            # Move to next cell
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x += sx * self.grid_size
+            if e2 < dx:
+                err += dx
+                y += sy * self.grid_size
+        
+        return True
