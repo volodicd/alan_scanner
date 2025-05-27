@@ -5,8 +5,6 @@ from logging.handlers import RotatingFileHandler
 from flask import Flask, request
 from flask_socketio import SocketIO
 
-from routes import web
-
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -26,20 +24,34 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
 
+# Create SocketIO instance
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+# Import routes AFTER creating socketio instance
+from routes import web, set_socketio_instance
+
+# Set the socketio instance for routes
+set_socketio_instance(socketio)
+
+# Register blueprint
 app.register_blueprint(web)
+
+# Create necessary directories
 os.makedirs('static/css', exist_ok=True)
 os.makedirs('static/js', exist_ok=True)
 os.makedirs('static/img', exist_ok=True)
 
-
 @socketio.on('connect')
 def handle_connect():
-    logger.info(f"Client connected: {request.sid}")
+    logger.info(f"🔌 Client connected: {request.sid}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    logger.info(f"Client disconnected: {request.sid}")
+    logger.info(f"🔌 Client disconnected: {request.sid}")
+
+@socketio.on('connect_error')
+def handle_connect_error(error):
+    logger.error(f"🔥 Client connection error: {error}")
 
 if __name__ == '__main__':
     logger.info("Starting Web Service")
