@@ -123,74 +123,76 @@ class VisionController:
         logger.info("Vision processing thread started")
 
         try:
-            # Use context manager for safe camera handling
-            with self.stereo_vision:
-                # Check calibration status
-                has_calibration = self.stereo_vision.maps_initialized or self.stereo_vision.load_calibration()
+            # Ensure cameras are open (don't use context manager here)
+            if not self.stereo_vision.left_cam or not self.stereo_vision.right_cam:
+                self.stereo_vision.open_cameras()
+            
+            # Check calibration status
+            has_calibration = self.stereo_vision.maps_initialized or self.stereo_vision.load_calibration()
 
-                # Processing loop
-                while True:
-                    # Check if we should continue running
-                    with self.lock:
-                        if not self.is_running:
-                            break
+            # Processing loop
+            while True:
+                # Check if we should continue running
+                with self.lock:
+                    if not self.is_running:
+                        break
 
-                    try:
-                        # Capture frames
-                        left_frame, right_frame = self.stereo_vision.capture_frames()
+                try:
+                    # Capture frames
+                    left_frame, right_frame = self.stereo_vision.capture_frames()
 
-                        if left_frame is None or right_frame is None:
-                            logger.warning("Failed to capture frames")
-                            time.sleep(0.1)
-                            continue
+                    if left_frame is None or right_frame is None:
+                        logger.warning("Failed to capture frames")
+                        time.sleep(0.1)
+                        continue
 
-                        # Update current timestamp
-                        current_time = time.time()
+                    # Update current timestamp
+                    current_time = time.time()
 
-                        # Process images if calibration is available
-                        if has_calibration:
-                            # Rectify images
-                            left_rect, right_rect = self.stereo_vision.get_rectified_images(left_frame, right_frame)
+                    # Process images if calibration is available
+                    if has_calibration:
+                        # Rectify images
+                        left_rect, right_rect = self.stereo_vision.get_rectified_images(left_frame, right_frame)
 
-                            # Compute disparity map
-                            disparity, disparity_color = self.stereo_vision.compute_disparity_map(left_rect, right_rect)
+                        # Compute disparity map
+                        disparity, disparity_color = self.stereo_vision.compute_disparity_map(left_rect, right_rect)
 
-                            # Analyze disparity for object detection
-                            is_object, distance_object, grid_distances = self.stereo_vision.analyze_disparity(disparity)
+                        # Analyze disparity for object detection
+                        is_object, distance_object, grid_distances = self.stereo_vision.analyze_disparity(disparity)
 
-                            # Update vision data (thread-safe)
-                            with self.lock:
-                                self.vision_data = {
-                                    "is_object": is_object,
-                                    "distance_object": distance_object,
-                                    "objs": grid_distances,
-                                    "final": is_object  # Consider using same value for now
-                                }
-                                self.last_update_time = current_time
+                        # Update vision data (thread-safe)
+                        with self.lock:
+                            self.vision_data = {
+                                "is_object": is_object,
+                                "distance_object": distance_object,
+                                "objs": grid_distances,
+                                "final": is_object  # Consider using same value for now
+                            }
+                            self.last_update_time = current_time
 
-                                # Store current frames for streaming
-                                self.current_frames = {
-                                    "left": left_rect,
-                                    "right": right_rect,
-                                    "disparity": disparity_color,
-                                    "timestamp": current_time
-                                }
-                        else:
-                            # Store raw frames if no calibration
-                            with self.lock:
-                                self.current_frames = {
-                                    "left": left_frame,
-                                    "right": right_frame,
-                                    "disparity": None,
-                                    "timestamp": current_time
-                                }
+                            # Store current frames for streaming
+                            self.current_frames = {
+                                "left": left_rect,
+                                "right": right_rect,
+                                "disparity": disparity_color,
+                                "timestamp": current_time
+                            }
+                    else:
+                        # Store raw frames if no calibration
+                        with self.lock:
+                            self.current_frames = {
+                                "left": left_frame,
+                                "right": right_frame,
+                                "disparity": None,
+                                "timestamp": current_time
+                            }
 
-                        # Control frame rate to avoid CPU overuse
-                        time.sleep(0.03)  # ~30 FPS target
+                    # Control frame rate to avoid CPU overuse
+                    time.sleep(0.03)  # ~30 FPS target
 
-                    except Exception as e:
-                        logger.error(f"Frame processing error: {str(e)}")
-                        time.sleep(0.5)  # Slower retry on error
+                except Exception as e:
+                    logger.error(f"Frame processing error: {str(e)}")
+                    time.sleep(0.5)  # Slower retry on error
 
         except Exception as e:
             logger.error(f"Vision thread exception: {str(e)}")
@@ -213,11 +215,17 @@ class VisionController:
         with self.lock:
             frames = self.current_frames
 
-            # Важлива перевірка на наявність кадрів
+            # Check if we have frames available
             if frames["left"] is None:
-                return None
+                # Return empty result structure instead of None
+                logger.warning("No frames available for encoding")
+                return {
+                    "success": False,
+                    "message": "No frames available - camera may not be initialized or streaming may not be started",
+                    "timestamp": 0
+                }
 
-            result = {}
+            result = {"success": True}
 
             for key in ["left", "right", "disparity"]:
                 if frames[key] is not None:
@@ -246,54 +254,53 @@ class VisionController:
                 return None
 
         try:
-            # Use context manager for safe camera handling
-            with self.stereo_vision:
-                left_frame, right_frame = self.stereo_vision.capture_frames()
-                if left_frame is None or right_frame is None:
-                    logger.error("Failed to capture frames")
-                    return None
+            # Capture frames directly without context manager
+            left_frame, right_frame = self.stereo_vision.capture_frames()
+            if left_frame is None or right_frame is None:
+                logger.error("Failed to capture frames")
+                return None
 
-                # Generate timestamp
-                timestamp = time.strftime("%Y%m%d_%H%M%S")
+            # Generate timestamp
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
 
-                # Save raw captures
-                left_path = f"data/captures/left_{timestamp}.jpg"
-                right_path = f"data/captures/right_{timestamp}.jpg"
+            # Save raw captures
+            left_path = f"data/captures/left_{timestamp}.jpg"
+            right_path = f"data/captures/right_{timestamp}.jpg"
 
-                cv2.imwrite(left_path, left_frame)
-                cv2.imwrite(right_path, right_frame)
+            cv2.imwrite(left_path, left_frame)
+            cv2.imwrite(right_path, right_frame)
 
-                # Result object
-                result = {
-                    "timestamp": timestamp,
-                    "left_path": left_path,
-                    "right_path": right_path
-                }
+            # Result object
+            result = {
+                "timestamp": timestamp,
+                "left_path": left_path,
+                "right_path": right_path
+            }
 
-                # Process and save disparity if calibration available
-                try:
-                    has_calibration = self.stereo_vision.load_calibration()
-                    if has_calibration:
-                        # Get rectified images
-                        left_rect, right_rect = self.stereo_vision.get_rectified_images(left_frame, right_frame)
+            # Process and save disparity if calibration available
+            try:
+                has_calibration = self.stereo_vision.load_calibration()
+                if has_calibration:
+                    # Get rectified images
+                    left_rect, right_rect = self.stereo_vision.get_rectified_images(left_frame, right_frame)
 
-                        # Compute disparity
-                        _, disparity_color = self.stereo_vision.compute_disparity_map(left_rect, right_rect)
+                    # Compute disparity
+                    _, disparity_color = self.stereo_vision.compute_disparity_map(left_rect, right_rect)
 
-                        # Save disparity image
-                        disparity_path = f"data/captures/disparity_{timestamp}.jpg"
-                        cv2.imwrite(disparity_path, disparity_color)
+                    # Save disparity image
+                    disparity_path = f"data/captures/disparity_{timestamp}.jpg"
+                    cv2.imwrite(disparity_path, disparity_color)
 
-                        # Add to result
-                        result["disparity_path"] = disparity_path
-                        result["has_calibration"] = True
-                    else:
-                        result["has_calibration"] = False
-                except Exception as e:
-                    logger.error(f"Error processing disparity: {str(e)}")
+                    # Add to result
+                    result["disparity_path"] = disparity_path
+                    result["has_calibration"] = True
+                else:
                     result["has_calibration"] = False
+            except Exception as e:
+                logger.error(f"Error processing disparity: {str(e)}")
+                result["has_calibration"] = False
 
-                return result
+            return result
 
         except Exception as e:
             logger.error(f"Error in capture and save: {str(e)}")
@@ -372,56 +379,55 @@ class VisionController:
                 return False, "Stereo vision not initialized", None, None
 
         try:
-            with self.stereo_vision:
-                # Capture frames
-                left_frame, right_frame = self.stereo_vision.capture_frames()
-                if left_frame is None or right_frame is None:
-                    return False, "Failed to capture frames", None, None
+            # Capture frames directly without context manager
+            left_frame, right_frame = self.stereo_vision.capture_frames()
+            if left_frame is None or right_frame is None:
+                return False, "Failed to capture frames", None, None
 
-                # Convert to grayscale
-                left_gray = cv2.cvtColor(left_frame, cv2.COLOR_BGR2GRAY)
-                right_gray = cv2.cvtColor(right_frame, cv2.COLOR_BGR2GRAY)
+            # Convert to grayscale
+            left_gray = cv2.cvtColor(left_frame, cv2.COLOR_BGR2GRAY)
+            right_gray = cv2.cvtColor(right_frame, cv2.COLOR_BGR2GRAY)
 
-                # Apply preprocessing
-                left_gray = cv2.GaussianBlur(left_gray, (5, 5), 0)
-                right_gray = cv2.GaussianBlur(right_gray, (5, 5), 0)
+            # Apply preprocessing
+            left_gray = cv2.GaussianBlur(left_gray, (5, 5), 0)
+            right_gray = cv2.GaussianBlur(right_gray, (5, 5), 0)
 
-                # Check for checkerboard
-                pattern_flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
+            # Check for checkerboard
+            pattern_flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
 
-                found_left, left_corners = cv2.findChessboardCorners(left_gray, checkerboard_size, pattern_flags)
-                found_right, right_corners = cv2.findChessboardCorners(right_gray, checkerboard_size, pattern_flags)
+            found_left, left_corners = cv2.findChessboardCorners(left_gray, checkerboard_size, pattern_flags)
+            found_right, right_corners = cv2.findChessboardCorners(right_gray, checkerboard_size, pattern_flags)
 
-                # Create display images
-                left_display = left_frame.copy()
-                right_display = right_frame.copy()
+            # Create display images
+            left_display = left_frame.copy()
+            right_display = right_frame.copy()
 
-                # Draw corners if found
-                if found_left:
-                    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-                    left_corners = cv2.cornerSubPix(left_gray, left_corners, (11, 11), (-1, -1), criteria)
-                    cv2.drawChessboardCorners(left_display, checkerboard_size, left_corners, found_left)
+            # Draw corners if found
+            if found_left:
+                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+                left_corners = cv2.cornerSubPix(left_gray, left_corners, (11, 11), (-1, -1), criteria)
+                cv2.drawChessboardCorners(left_display, checkerboard_size, left_corners, found_left)
 
-                if found_right:
-                    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-                    right_corners = cv2.cornerSubPix(right_gray, right_corners, (11, 11), (-1, -1), criteria)
-                    cv2.drawChessboardCorners(right_display, checkerboard_size, right_corners, found_right)
+            if found_right:
+                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+                right_corners = cv2.cornerSubPix(right_gray, right_corners, (11, 11), (-1, -1), criteria)
+                cv2.drawChessboardCorners(right_display, checkerboard_size, right_corners, found_right)
 
-                # Encode display images
-                _, left_buffer = cv2.imencode('.jpg', left_display, [cv2.IMWRITE_JPEG_QUALITY, 80])
-                _, right_buffer = cv2.imencode('.jpg', right_display, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            # Encode display images
+            _, left_buffer = cv2.imencode('.jpg', left_display, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            _, right_buffer = cv2.imencode('.jpg', right_display, [cv2.IMWRITE_JPEG_QUALITY, 80])
 
-                left_b64 = base64.b64encode(left_buffer).decode('utf-8')
-                right_b64 = base64.b64encode(right_buffer).decode('utf-8')
+            left_b64 = base64.b64encode(left_buffer).decode('utf-8')
+            right_b64 = base64.b64encode(right_buffer).decode('utf-8')
 
-                return True, "Checkerboard detection complete", {
-                    'left_found': found_left,
-                    'right_found': found_right,
-                    'both_found': found_left and found_right,
-                    'left_image': left_b64,
-                    'right_image': right_b64,
-                    'checkerboard_size': checkerboard_size
-                }, None
+            return True, "Checkerboard detection complete", {
+                'left_found': found_left,
+                'right_found': found_right,
+                'both_found': found_left and found_right,
+                'left_image': left_b64,
+                'right_image': right_b64,
+                'checkerboard_size': checkerboard_size
+            }, None
 
         except cv2.error as e:
             logger.error(f"OpenCV error in checkerboard detection: {str(e)}")

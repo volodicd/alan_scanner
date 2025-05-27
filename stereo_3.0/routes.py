@@ -87,10 +87,11 @@ def get_frames():
     if not frames:
         return jsonify({'success': False, 'message': 'No frames available'}), 404
 
-    return jsonify({
-        'success': True,
-        **frames
-    })
+    # Check if frames result indicates failure
+    if not frames.get('success', True):
+        return jsonify(frames), 404
+
+    return jsonify(frames)
 
 
 @api.route('/capture', methods=['POST'])

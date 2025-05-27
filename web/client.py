@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class VisionClient:
     def __init__(self, base_url="http://localhost:5050"):
         self.base_url = base_url
-        self.timeout = 5  # Default timeout in seconds
+        self.timeout = 30  # Default timeout in seconds (increased for camera init)
 
     def _make_request(self, method, endpoint, data=None, params=None, timeout=None):
         """Super mega universal ultra function to make reuest to stereo api(and to the turtlebot as well)"""

@@ -82,6 +82,13 @@ function setupSocketEvents() {
 
     // Frames event
     eventHandlers.frames = function(data) {
+        console.log('Received frames data:', {
+            hasLeft: !!data.left,
+            hasRight: !!data.right,
+            hasDisparity: !!data.disparity,
+            leftLength: data.left ? data.left.length : 0,
+            rightLength: data.right ? data.right.length : 0
+        });
         updateCameraFeeds(data);
     };
     socket.on('frames', eventHandlers.frames);
@@ -136,23 +143,33 @@ function updateConnectionStatus(isConnected, message = null) {
 
 // Update camera feeds with received frame data
 function updateCameraFeeds(data) {
+    console.log('Updating camera feeds...');
+    
     // Update camera feeds
     if (data.left) {
-        document.querySelectorAll('[id$="left-camera"]').forEach(element => {
-            element.src = 'data:image/jpeg;base64,' + data.left;
-        });
+        const leftCamera = document.getElementById('left-camera');
+        console.log('Left camera element:', leftCamera);
+        if (leftCamera) {
+            leftCamera.src = 'data:image/jpeg;base64,' + data.left;
+            console.log('Updated left camera src');
+        }
     }
 
     if (data.right) {
-        document.querySelectorAll('[id$="right-camera"]').forEach(element => {
-            element.src = 'data:image/jpeg;base64,' + data.right;
-        });
+        const rightCamera = document.getElementById('right-camera');
+        console.log('Right camera element:', rightCamera);
+        if (rightCamera) {
+            rightCamera.src = 'data:image/jpeg;base64,' + data.right;
+            console.log('Updated right camera src');
+        }
     }
 
     if (data.disparity) {
         const disparityMap = document.getElementById('disparity-map');
+        console.log('Disparity map element:', disparityMap);
         if (disparityMap) {
             disparityMap.src = 'data:image/jpeg;base64,' + data.disparity;
+            console.log('Updated disparity map src');
         }
     }
 

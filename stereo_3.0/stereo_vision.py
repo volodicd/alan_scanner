@@ -73,21 +73,46 @@ class StereoVision:
             self.left_cam = cv2.VideoCapture(self.left_cam_idx)
             self.right_cam = cv2.VideoCapture(self.right_cam_idx)
 
-            if not self.left_cam.isOpened() or not self.right_cam.isOpened():
-                logger.error("Failed to open one or both cameras")
+            if not self.left_cam.isOpened():
+                logger.error(f"Failed to open left camera at index {self.left_cam_idx}")
                 self.close_cameras()
-                raise RuntimeError("Failed to open one or both cameras")
+                raise RuntimeError(f"Failed to open left camera at index {self.left_cam_idx}")
+            
+            if not self.right_cam.isOpened():
+                logger.error(f"Failed to open right camera at index {self.right_cam_idx}")
+                self.close_cameras()
+                raise RuntimeError(f"Failed to open right camera at index {self.right_cam_idx}")
 
             # Set camera parameters
-            for cam in [self.left_cam, self.right_cam]:
+            for i, cam in enumerate([self.left_cam, self.right_cam]):
+                cam_name = "left" if i == 0 else "right"
                 cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
                 cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
                 cam.set(cv2.CAP_PROP_FPS, 30)
+                
+                # Verify settings were applied
+                actual_width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_height = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                logger.info(f"{cam_name} camera: requested {self.width}x{self.height}, got {actual_width}x{actual_height}")
 
             # Allow settings to apply
             time.sleep(0.5)
 
-            logger.info(f"Cameras initialized with resolution {self.width}x{self.height}")
+            # Test capture from both cameras
+            ret_left, _ = self.left_cam.read()
+            ret_right, _ = self.right_cam.read()
+            
+            if not ret_left:
+                logger.error("Left camera test capture failed")
+                self.close_cameras()
+                raise RuntimeError("Left camera test capture failed")
+                
+            if not ret_right:
+                logger.error("Right camera test capture failed")
+                self.close_cameras()
+                raise RuntimeError("Right camera test capture failed")
+
+            logger.info(f"Cameras initialized successfully with resolution {self.width}x{self.height}")
             return True
         except Exception as e:
             logger.error(f"Error opening cameras: {str(e)}")
@@ -108,7 +133,10 @@ class StereoVision:
 
     def capture_frames(self):
         """Capture frames from both cameras"""
-        if not self.left_cam or not self.right_cam:
+        # Check if cameras exist and are opened
+        if (not self.left_cam or not self.left_cam.isOpened() or 
+            not self.right_cam or not self.right_cam.isOpened()):
+            logger.warning("Cameras not properly opened, attempting to open them")
             self.open_cameras()
 
         ret_left, left_frame = self.left_cam.read()
