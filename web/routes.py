@@ -259,7 +259,7 @@ def stream_frames():
 
             if current_time - last_fps_update >= 1.0:
                 fps = frames_count
-                frames_count = 0
+                frames_count = 1
                 last_fps_update = current_time
                 response['fps'] = fps
                 logger.debug(f"📊 Current FPS: {fps}")

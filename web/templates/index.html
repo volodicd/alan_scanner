@@ -36,17 +36,21 @@
                         <div class="col-md-6">
                             <div class="panel-header">Left Camera</div>
                             <div class="camera-view">
+                                <!-- ID matches websocket.js expectations -->
                                 <img id="left-camera"
                                      src="{{ url_for('static', filename='img/placeholder-camera.jpg') }}"
-                                     alt="Left Camera Feed">
+                                     alt="Left Camera Feed"
+                                     style="width: 100%; height: auto; max-height: 400px; object-fit: contain;">
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="panel-header">Right Camera</div>
                             <div class="camera-view">
+                                <!-- ID matches websocket.js expectations -->
                                 <img id="right-camera"
                                      src="{{ url_for('static', filename='img/placeholder-camera.jpg') }}"
-                                     alt="Right Camera Feed">
+                                     alt="Right Camera Feed"
+                                     style="width: 100%; height: auto; max-height: 400px; object-fit: contain;">
                             </div>
                         </div>
                     </div>
@@ -54,9 +58,11 @@
                         <div class="col-md-12">
                             <div class="panel-header">Disparity Map</div>
                             <div class="camera-view">
+                                <!-- ID matches websocket.js expectations -->
                                 <img id="disparity-map"
                                      src="{{ url_for('static', filename='img/placeholder-disparity.jpg') }}"
-                                     alt="Disparity Map">
+                                     alt="Disparity Map"
+                                     style="width: 100%; height: auto; max-height: 400px; object-fit: contain;">
                             </div>
                         </div>
                     </div>
@@ -76,11 +82,13 @@
                         <tbody>
                         <tr>
                             <th scope="row">Left Camera</th>
-                            <td id="left-camera-status">Not connected</td>
+                            <!-- ID matches websocket.js expectations -->
+                            <td id="left-camera-status" class="text-danger">Not connected</td>
                         </tr>
                         <tr>
                             <th scope="row">Right Camera</th>
-                            <td id="right-camera-status">Not connected</td>
+                            <!-- ID matches websocket.js expectations -->
+                            <td id="right-camera-status" class="text-danger">Not connected</td>
                         </tr>
                         <tr>
                             <th scope="row">Calibration</th>
@@ -88,6 +96,7 @@
                         </tr>
                         <tr>
                             <th scope="row">Stream FPS</th>
+                            <!-- ID matches websocket.js expectations -->
                             <td id="stream-fps">0</td>
                         </tr>
                         </tbody>
@@ -136,7 +145,8 @@
                             <div class="camera-view">
                                 <img id="calib-left-camera"
                                      src="{{ url_for('static', filename='img/placeholder-camera.jpg') }}"
-                                     alt="Left Camera Feed">
+                                     alt="Left Camera Feed"
+                                     style="width: 100%; height: auto; max-height: 350px; object-fit: contain;">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -144,7 +154,8 @@
                             <div class="camera-view">
                                 <img id="calib-right-camera"
                                      src="{{ url_for('static', filename='img/placeholder-camera.jpg') }}"
-                                     alt="Right Camera Feed">
+                                     alt="Right Camera Feed"
+                                     style="width: 100%; height: auto; max-height: 350px; object-fit: contain;">
                             </div>
                         </div>
                     </div>
@@ -158,13 +169,15 @@
                                         <div class="mb-3">
                                             <label for="checkerboard-cols" class="form-label">Checkerboard
                                                 Columns</label>
-                                            <input type="number" class="form-control" id="checkerboard-cols" value="7">
+                                            <input type="number" class="form-control" id="checkerboard-cols" value="12"
+                                                   min="3" max="15">
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="mb-3">
                                             <label for="checkerboard-rows" class="form-label">Checkerboard Rows</label>
-                                            <input type="number" class="form-control" id="checkerboard-rows" value="6">
+                                            <input type="number" class="form-control" id="checkerboard-rows" value="11"
+                                                   min="3" max="15">
                                         </div>
                                     </div>
                                 </div>
@@ -172,14 +185,15 @@
                                     <div class="col-md-6">
                                         <div class="mb-3">
                                             <label for="square-size" class="form-label">Square Size (m)</label>
-                                            <input type="number" class="form-control" id="square-size" value="0.025"
-                                                   step="0.001">
+                                            <input type="number" class="form-control" id="square-size" value="0.004"
+                                                   step="0.001" min="0.001" max="1.0">
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="mb-3">
                                             <label for="min-pairs" class="form-label">Minimum Pairs</label>
-                                            <input type="number" class="form-control" id="min-pairs" value="20">
+                                            <input type="number" class="form-control" id="min-pairs" value="20" min="10"
+                                                   max="100">
                                         </div>
                                     </div>
                                 </div>
@@ -272,22 +286,35 @@
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="left-camera-index" class="form-label">Left Camera Index</label>
-                            <input type="number" class="form-control" id="left-camera-index" min="0" value="0">
+                            <input type="number" class="form-control" id="left-camera-index" min="0" max="10" value="0">
                         </div>
                         <div class="col-md-6">
                             <label for="right-camera-index" class="form-label">Right Camera Index</label>
-                            <input type="number" class="form-control" id="right-camera-index" min="0" value="1">
+                            <input type="number" class="form-control" id="right-camera-index" min="0" max="10"
+                                   value="1">
                         </div>
                     </div>
 
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="camera-width" class="form-label">Resolution Width</label>
-                            <input type="number" class="form-control" id="camera-width" min="320" step="8" value="640">
+                            <select class="form-select" id="camera-width">
+                                <option value="320">320px</option>
+                                <option value="640" selected>640px</option>
+                                <option value="800">800px</option>
+                                <option value="1024">1024px</option>
+                                <option value="1280">1280px</option>
+                            </select>
                         </div>
                         <div class="col-md-6">
                             <label for="camera-height" class="form-label">Resolution Height</label>
-                            <input type="number" class="form-control" id="camera-height" min="240" step="8" value="480">
+                            <select class="form-select" id="camera-height">
+                                <option value="240">240px</option>
+                                <option value="480" selected>480px</option>
+                                <option value="600">600px</option>
+                                <option value="768">768px</option>
+                                <option value="720">720px</option>
+                            </select>
                         </div>
                     </div>
 
@@ -316,9 +343,18 @@
                         </div>
                         <div class="col-md-6">
                             <label for="num-disparities" class="form-label">Number of Disparities</label>
-                            <input type="number" class="form-control" id="num-disparities" min="16" step="16"
-                                   value="128">
-                            <small class="form-text text-muted">Must be a multiple of 16</small>
+                            <select class="form-select" id="num-disparities">
+                                <option value="16">16</option>
+                                <option value="32">32</option>
+                                <option value="48">48</option>
+                                <option value="64">64</option>
+                                <option value="80">80</option>
+                                <option value="96">96</option>
+                                <option value="112">112</option>
+                                <option value="128" selected>128</option>
+                                <option value="144">144</option>
+                                <option value="160">160</option>
+                            </select>
                         </div>
                     </div>
 
@@ -326,13 +362,17 @@
                         <div class="col-md-6">
                             <label for="uniqueness-ratio" class="form-label">Uniqueness Ratio</label>
                             <input type="range" class="form-range" id="uniqueness-ratio" min="5" max="25" value="15">
-                            <span id="uniqueness-ratio-value">15</span>
+                            <div class="text-center">
+                                <small><span id="uniqueness-ratio-value">15</span></small>
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <label for="speckle-window-size" class="form-label">Speckle Window Size</label>
                             <input type="range" class="form-range" id="speckle-window-size" min="0" max="200"
                                    value="100">
-                            <span id="speckle-window-size-value">100</span>
+                            <div class="text-center">
+                                <small><span id="speckle-window-size-value">100</span></small>
+                            </div>
                         </div>
                     </div>
 
@@ -381,6 +421,27 @@
                     </button>
                 </div>
             </div>
+
+            <!-- Debug Console Card -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <i class="fas fa-terminal"></i> Debug Console
+                </div>
+                <div class="card-body">
+                    <div id="debug-console" class="logs-container"
+                         style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+                        <div class="text-muted">Debug messages will appear here...</div>
+                    </div>
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-secondary" id="clear-debug-btn">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                        <button class="btn btn-sm btn-info" id="test-websocket-btn">
+                            <i class="fas fa-wifi"></i> Test WebSocket
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -391,4 +452,96 @@
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 <script src="{{ url_for('static', filename='js/calibration.js') }}"></script>
 <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+
+<!-- Debug helper script -->
+<script>
+    // Debug console functionality
+    function addDebugMessage(message, type = 'info') {
+        const debugConsole = document.getElementById('debug-console');
+        if (debugConsole) {
+            const timestamp = new Date().toLocaleTimeString();
+            const messageClass = type === 'error' ? 'text-danger' : type === 'success' ? 'text-success' : 'text-info';
+
+            const messageElement = document.createElement('div');
+            messageElement.className = messageClass;
+            messageElement.innerHTML = `<small>[${timestamp}] ${message}</small>`;
+
+            debugConsole.appendChild(messageElement);
+            debugConsole.scrollTop = debugConsole.scrollHeight;
+
+            // Keep only last 50 messages
+            while (debugConsole.children.length > 50) {
+                debugConsole.removeChild(debugConsole.firstChild);
+            }
+        }
+    }
+
+    // Debug button handlers
+    document.addEventListener('DOMContentLoaded', function () {
+        const clearDebugBtn = document.getElementById('clear-debug-btn');
+        const testWebSocketBtn = document.getElementById('test-websocket-btn');
+
+        if (clearDebugBtn) {
+            clearDebugBtn.addEventListener('click', () => {
+                const debugConsole = document.getElementById('debug-console');
+                if (debugConsole) {
+                    debugConsole.innerHTML = '<div class="text-muted">Debug console cleared...</div>';
+                }
+            });
+        }
+
+        if (testWebSocketBtn) {
+            testWebSocketBtn.addEventListener('click', () => {
+                addDebugMessage('Testing WebSocket connection...', 'info');
+                if (window.webSocketManager) {
+                    addDebugMessage(`WebSocket connected: ${window.webSocketManager.isConnected}`, 'success');
+                    addDebugMessage(`Socket ID: ${window.webSocketManager.socket?.id || 'N/A'}`, 'info');
+                } else {
+                    addDebugMessage('WebSocket manager not available', 'error');
+                }
+            });
+        }
+
+        // Override console.log to also show in debug console
+        const originalLog = console.log;
+        console.log = function (...args) {
+            originalLog.apply(console, args);
+            addDebugMessage(args.join(' '), 'info');
+        };
+
+        const originalError = console.error;
+        console.error = function (...args) {
+            originalError.apply(console, args);
+            addDebugMessage(args.join(' '), 'error');
+        };
+
+        // Update slider value displays
+        const uniquenessSlider = document.getElementById('uniqueness-ratio');
+        const uniquenessValueSpan = document.getElementById('uniqueness-ratio-value');
+        const speckleSlider = document.getElementById('speckle-window-size');
+        const speckleValueSpan = document.getElementById('speckle-window-size-value');
+
+        if (uniquenessSlider && uniquenessValueSpan) {
+            uniquenessSlider.addEventListener('input', (e) => {
+                uniquenessValueSpan.textContent = e.target.value;
+            });
+        }
+
+        if (speckleSlider && speckleValueSpan) {
+            speckleSlider.addEventListener('input', (e) => {
+                speckleValueSpan.textContent = e.target.value;
+            });
+        }
+
+        // Update stability threshold display
+        const stabilitySlider = document.getElementById('stability-threshold');
+        const stabilityValueSpan = document.getElementById('stability-value');
+
+        if (stabilitySlider && stabilityValueSpan) {
+            stabilitySlider.addEventListener('input', (e) => {
+                stabilityValueSpan.textContent = `${e.target.value}s`;
+            });
+        }
+    });
+</script>
 {% endblock %}

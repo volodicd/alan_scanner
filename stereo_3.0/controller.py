@@ -121,14 +121,16 @@ class VisionController:
             return
 
         logger.info("Vision processing thread started")
+        frame_count = 0  # ADD THIS
 
         try:
             # Ensure cameras are open (don't use context manager here)
             if not self.stereo_vision.left_cam or not self.stereo_vision.right_cam:
                 self.stereo_vision.open_cameras()
-            
+
             # Check calibration status
             has_calibration = self.stereo_vision.maps_initialized or self.stereo_vision.load_calibration()
+            logger.info(f"Starting processing loop, calibration: {has_calibration}")  # ADD THIS
 
             # Processing loop
             while True:
@@ -140,11 +142,14 @@ class VisionController:
                 try:
                     # Capture frames
                     left_frame, right_frame = self.stereo_vision.capture_frames()
+                    frame_count += 1  # ADD THIS
 
                     if left_frame is None or right_frame is None:
-                        logger.warning("Failed to capture frames")
+                        logger.warning(f"Failed to capture frames #{frame_count}")  # MODIFY THIS
                         time.sleep(0.1)
                         continue
+
+
 
                     # Update current timestamp
                     current_time = time.time()
@@ -191,7 +196,7 @@ class VisionController:
                     time.sleep(0.03)  # ~30 FPS target
 
                 except Exception as e:
-                    logger.error(f"Frame processing error: {str(e)}")
+                    logger.error(f"Frame processing error #{frame_count}: {str(e)}")
                     time.sleep(0.5)  # Slower retry on error
 
         except Exception as e:
@@ -201,7 +206,7 @@ class VisionController:
             # Ensure state is updated when thread exits
             with self.lock:
                 self.is_running = False
-            logger.info("Vision processing thread stopped")
+            logger.info(f"Vision processing thread stopped after {frame_count} frames")  # MODIFY THISch
 
     def get_vision_data(self):
         """Get current vision data for TurtleBot integration"""
@@ -307,41 +312,54 @@ class VisionController:
             return None
 
     def run_calibration(self, checkerboard_size=(7, 6), square_size=0.025, num_samples=20):
-        """Run the calibration process"""
-        with self.lock:
-            if self.is_running:
-                logger.error("Cannot calibrate while processing is running")
-                return False, "Stop vision processing before calibration"
+        """Run the calibration process - REMOVED the lock that prevented calibration during processing"""
 
-            if not self.stereo_vision:
-                self.stereo_vision = StereoVision()
+        # REMOVED: The problematic lock check
+        # OLD CODE:
+        # with self.lock:
+        #     if self.is_running:
+        #         logger.error("Cannot calibrate while processing is running")
+        #         return False, "Stop vision processing before calibration"
 
-            try:
-                result = self.stereo_vision.calibrate(
-                    checkerboard_size=checkerboard_size,
-                    square_size=square_size,
-                    num_samples=num_samples
-                )
+        # NEW APPROACH: Allow calibration to run alongside vision processing
+        logger.info(f"Starting calibration (vision processing will continue)")
+        if not self.stereo_vision:
+            self.stereo_vision = StereoVision()
 
-                if result:
-                    # Get calibration information
-                    try:
-                        calibration_data = np.load('data/calibration/stereo_calibration.npy', allow_pickle=True).item()
-                        info = {
-                            'date': calibration_data.get('calibration_date', 'Unknown'),
-                            'frame_count': calibration_data.get('frame_count', 0),
-                            'rms_error': calibration_data.get('rms_error', 0.0)
-                        }
-                        return True, info
-                    except Exception as e:
-                        logger.error(f"Error reading calibration info: {str(e)}")
-                        return True, None
-                else:
-                    return False, "Calibration failed"
+        def get_current_frames():
+            """Frame source function that returns current frames from vision processing"""
+            with self.lock:
+                if self.current_frames["left"] is not None and self.current_frames["right"] is not None:
+                    return self.current_frames["left"].copy(), self.current_frames["right"].copy()
+                return None, None
 
-            except Exception as e:
-                logger.error(f"Calibration error: {str(e)}")
-                return False, str(e)
+        try:
+            result = self.stereo_vision.calibrate(
+                checkerboard_size=checkerboard_size,
+                square_size=square_size,
+                num_samples=num_samples,
+                frame_source=get_current_frames  # Use shared frames instead of direct camera access
+            )
+
+            if result:
+                # Get calibration information
+                try:
+                    calibration_data = np.load('data/calibration/stereo_calibration.npy', allow_pickle=True).item()
+                    info = {
+                        'date': calibration_data.get('calibration_date', 'Unknown'),
+                        'frame_count': calibration_data.get('frame_count', 0),
+                        'rms_error': calibration_data.get('rms_error', 0.0)
+                    }
+                    return True, info
+                except Exception as e:
+                    logger.error(f"Error reading calibration info: {str(e)}")
+                    return True, None
+            else:
+                return False, "Calibration failed"
+
+        except Exception as e:
+            logger.error(f"Calibration error: {str(e)}")
+            return False, str(e)
 
     def get_calibration_status(self):
         """Check if calibration file exists and load info"""

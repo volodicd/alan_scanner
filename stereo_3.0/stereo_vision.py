@@ -148,7 +148,7 @@ class StereoVision:
 
         return left_frame, right_frame
 
-    def calibrate(self, checkerboard_size=(7, 6), square_size=0.025, num_samples=20):
+    def calibrate(self, checkerboard_size=(7, 6), square_size=0.025, num_samples=20, frame_source=None):
         """Run calibration process with specified checkerboard"""
         logger.info(f"Starting calibration with checkerboard size {checkerboard_size} and square size {square_size}m")
 
@@ -171,8 +171,13 @@ class StereoVision:
         try:
             while frame_count < num_samples:
                 # Capture and preprocess frames
-                left_frame, right_frame = self.capture_frames()
+                if frame_source:
+                    left_frame, right_frame = frame_source()  # Get frames from shared buffer
+                else:
+                    left_frame, right_frame = self.capture_frames()  # Direct camera access
+
                 if left_frame is None or right_frame is None:
+                    time.sleep(0.1)
                     continue
 
                 left_gray = cv2.cvtColor(left_frame, cv2.COLOR_BGR2GRAY)
