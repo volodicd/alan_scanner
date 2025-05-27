@@ -148,7 +148,7 @@ class StereoVision:
 
         return left_frame, right_frame
 
-    def calibrate(self, checkerboard_size=(7, 6), square_size=0.025, num_samples=20, frame_source=None):
+    def calibrate(self, checkerboard_size=(12, 11), square_size=0.004, num_samples=20, frame_source=None):
         """Run calibration process with specified checkerboard"""
         logger.info(f"Starting calibration with checkerboard size {checkerboard_size} and square size {square_size}m")
 
@@ -332,7 +332,7 @@ class StereoVision:
             self.camera_matrix_right, self.dist_coeffs_right, self.R2, self.P2
         ]
 
-        if not all(required_params):
+        if any(param is None for param in required_params):
             logger.error("Cannot initialize rectification maps - missing calibration parameters")
             return False
 

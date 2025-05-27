@@ -145,8 +145,8 @@ def start_calibration():
 
         # Extract calibration parameters from request
         data = request.json or {}
-        checkerboard_size = data.get('checkerboard_size', [7, 6])
-        square_size = data.get('square_size', 0.025)
+        checkerboard_size = data.get('checkerboard_size', [12, 11])
+        square_size = data.get('square_size', 0.004)
         num_samples = data.get('num_samples', 20)
 
         # Start calibration

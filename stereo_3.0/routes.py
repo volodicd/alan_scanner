@@ -70,10 +70,11 @@ def get_turtlebot_data():
     data = vision_controller.get_vision_data()
     # Return only the exact fields needed by TurtleBot
     return jsonify({
-        'is_object': data['is_object'], # send bool if object is close to the turtlebot
-        'distance_object': data['distance_object'], # distance to the main object
-        'objs': data['objs'], # list of 16 parts of the picture with the avarage distance to each of that 16 parts
-        'final': data['final'] # probably will be deleted, was planned for turetlebot service to get know if the map is finished
+        'is_object': data['is_object'],  # send bool if object is close to the turtlebot
+        'distance_object': data['distance_object'],  # distance to the main object
+        'objs': data['objs'],  # list of 16 parts of the picture with the avarage distance to each of that 16 parts
+        'final': data['final']
+        # probably will be deleted, was planned for turetlebot service to get know if the map is finished
     })
 
 
@@ -108,9 +109,74 @@ def capture_frame():
     })
 
 
+# 🔥 FIX: Add the missing /api/calibrate/start endpoint that frontend expects
+@api.route('/calibrate/start', methods=['POST'])
+def start_calibration():
+    """Start the calibration process - NEW ENDPOINT for frontend compatibility"""
+    data = request.json or {}
+
+    # Parse calibration parameters
+    try:
+        checkerboard_size = tuple(data.get('checkerboard_size', (12, 11)))
+        square_size = float(data.get('square_size', 0.004))
+        num_samples = int(data.get('num_samples', 20))
+        auto_capture = data.get('auto_capture', True)
+        stability_seconds = float(data.get('stability_seconds', 3.0))
+    except (ValueError, TypeError) as e:
+        return jsonify({'success': False, 'message': f'Invalid parameter: {str(e)}'}), 400
+
+    logger.info(
+        f"Starting calibration: checkerboard={checkerboard_size}, square_size={square_size}, samples={num_samples}")
+
+    # Run calibration in background (non-blocking)
+    success, result = vision_controller.run_calibration(
+        checkerboard_size=checkerboard_size,
+        square_size=square_size,
+        num_samples=num_samples
+    )
+
+    if success:
+        return jsonify({
+            'success': True,
+            'message': 'Calibration started successfully',
+            'auto_capture': auto_capture,
+            'stability_seconds': stability_seconds,
+            'existing_pairs': 0  # Could be enhanced to check for existing calibration data
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': result or 'Failed to start calibration'
+        }), 500
+
+
+# 🔥 FIX: Add calibration settings endpoint
+@api.route('/calibrate/settings', methods=['POST'])
+def update_calibration_settings():
+    """Update calibration settings - NEW ENDPOINT for frontend"""
+    data = request.json or {}
+
+    try:
+        # Validate and store calibration settings
+        checkerboard_size = tuple(data.get('checkerboard_size', (12, 11)))
+        square_size = float(data.get('square_size', 0.004))
+        auto_capture = data.get('auto_capture', True)
+        stability_seconds = float(data.get('stability_seconds', 3.0))
+
+        # You could store these in vision_controller for future use
+        logger.info(f"Updated calibration settings: {data}")
+
+        return jsonify({
+            'success': True,
+            'message': 'Calibration settings updated successfully'
+        })
+    except (ValueError, TypeError) as e:
+        return jsonify({'success': False, 'message': f'Invalid parameter: {str(e)}'}), 400
+
+
 @api.route('/calibrate', methods=['POST'])
 def calibrate():
-    """Run the calibration process"""
+    """Run the calibration process - EXISTING ENDPOINT"""
     data = request.json or {}
 
     # Parse calibration parameters

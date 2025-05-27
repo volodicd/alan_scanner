@@ -311,7 +311,7 @@ class VisionController:
             logger.error(f"Error in capture and save: {str(e)}")
             return None
 
-    def run_calibration(self, checkerboard_size=(7, 6), square_size=0.025, num_samples=20):
+    def run_calibration(self, checkerboard_size=(12, 11), square_size=0.004, num_samples=20):
         """Run the calibration process - REMOVED the lock that prevented calibration during processing"""
 
         # REMOVED: The problematic lock check
@@ -390,7 +390,7 @@ class VisionController:
                 'calibration_info': {'error': str(e)}
             }
 
-    def detect_checkerboard(self, checkerboard_size=(7, 6)):
+    def detect_checkerboard(self, checkerboard_size=(12, 11)):
         """Test checkerboard detection with current camera feed"""
         with self.lock:
             if not self.stereo_vision:
